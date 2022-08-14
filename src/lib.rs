@@ -32,16 +32,13 @@ pub struct Tree<'t, const D: usize> {
 enum LeafNode<'t, const D: usize> {
     Node {
         split_dim: usize,
-        point: &'t[NotNan<f64>; D],
+        point: &'t [NotNan<f64>; D],
         left: usize,
         right: usize,
     },
     Leaf(Leaf<'t, D>),
 }
 
-// struct Leaf<'t, const D: usize> {
-//     contents: Vec<&'t [NotNan<f64>; D]>,
-// }
 type Leaf<'t, const D: usize> = Vec<&'t [NotNan<f64>; D]>;
 
 impl<'t, const D: usize> Tree<'t, D> {
@@ -65,24 +62,15 @@ impl<'t, const D: usize> Tree<'t, D> {
 
         // Initialize variables for recursive function
         let split_level: usize = 0;
-
-        // let vec_ref: Vec<&'t [NotNan<f64>; D]> = data.iter().collect();
         #[cfg(feature = "timing")]
         let timer = std::time::Instant::now();
-        let vec_ref: &mut[&'t [NotNan<f64>; D]] = &mut data.iter().collect::<Vec<_>>();
+        let vec_ref: &mut [&'t [NotNan<f64>; D]] = &mut data.iter().collect::<Vec<_>>();
         #[cfg(feature = "timing")]
         let initial_vec_ref = timer.elapsed().as_nanos();
-
         let mut nodes = vec![];
 
         // Run recursive parallel build
         Tree::get_leafnodes(vec_ref, split_level, leafsize, &mut nodes);
-
-        // Unpack nodes
-        // Unsafe is here so that we don't have to impl Debug on Tree,
-        // as required by unwrap.
-        // let nodes = unsafe { Arc::try_unwrap(nodes).unwrap_unchecked().into_inner().unwrap() };
-        // let nodes = nodes.into_inner();
 
         #[cfg(feature = "timing")]
         {
@@ -94,6 +82,7 @@ impl<'t, const D: usize> Tree<'t, D> {
              + NODE_SECOND_SPLIT.load(std::sync::atomic::Ordering::SeqCst)
              + NODE_WRITE.load(std::sync::atomic::Ordering::SeqCst)
             };
+
             println!("\nINITIAL_VEC_REF = {}", initial_vec_ref.to_formatted_string(&Locale::en));
             println!("LEAF_VEC_ALLOC = {}", LEAF_VEC_ALLOC.load(std::sync::atomic::Ordering::SeqCst).to_formatted_string(&Locale::en));
             println!("LEAF_WRITE = {}", LEAF_WRITE.load(std::sync::atomic::Ordering::SeqCst).to_formatted_string(&Locale::en));
