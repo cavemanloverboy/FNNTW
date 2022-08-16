@@ -24,7 +24,7 @@ fn tree_build_bench() {
                 .collect();
 
             let time = Instant::now();
-            let tree = Tree::new(&data, 16).unwrap();
+            let tree = Tree::new(&data, 32).unwrap();
             build_time += time.elapsed().as_nanos();
         }
     }
