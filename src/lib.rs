@@ -34,7 +34,11 @@ enum LeafNode<'t, const D: usize> {
         left: usize,
         right: usize,
     },
-    Leaf(Leaf<'t, D>),
+    Leaf { 
+        points: Leaf<'t, D>,
+        lower: [NotNan<f64>; D],
+        upper: [NotNan<f64>; D],        
+    },
 }
 
 type Leaf<'t, const D: usize> = Vec<&'t [NotNan<f64>; D]>;
@@ -141,7 +145,25 @@ impl<'t, const D: usize> Tree<'t, D> {
 
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
-                let leaf = LeafNode::Leaf(subset.to_vec());
+                let mut lower = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MAX) });
+                let mut upper = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MIN) });
+                for i in 0..D {
+                    for p in 0..subset.len() {
+                        unsafe {
+
+                            // get mut refs
+                            let lower_i = lower.get_unchecked_mut(i);
+                            let upper_i = upper.get_unchecked_mut(i);
+                            *lower_i = *(&*lower_i).min(subset.get_unchecked(p).get_unchecked(i));
+                            *upper_i = *(&*upper_i).min(subset.get_unchecked(p).get_unchecked(i));
+                        }
+                    }
+                }
+                let leaf = LeafNode::Leaf {
+                    points: subset.to_vec(),
+                    lower,
+                    upper,
+                };
                 #[cfg(feature = "timing")]
                 let vec_alloc = timer.elapsed().as_nanos();
                 #[cfg(feature = "timing")]
