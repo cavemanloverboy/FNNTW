@@ -1,5 +1,3 @@
-#![feature(slice_split_at_unchecked)]
-
 use ordered_float::NotNan;
 
 #[cfg(feature = "timing")]
