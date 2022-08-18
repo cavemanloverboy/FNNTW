@@ -41,6 +41,38 @@ enum Node<'t, const D: usize> {
     },
 }
 
+impl<'t, const D: usize> Node<'t, D> {
+
+    fn is_stem(&self) -> bool {
+        match self {
+            Node::Stem { .. } => true,
+            Node::Leaf { .. } => false,
+        }
+    }
+    
+    #[cfg(not(feature = "single_ref"))]
+    /// This was here just to test performance vs single ref.
+    /// double ref seems to win (this one is double ref)
+    fn iter(&'t self) -> impl Iterator<Item=&'t &'t [NotNan<f64>; D]> {
+        match self {
+            Node::Leaf { points, .. } => points.iter(),
+            _ => unreachable!("this function should only be used on leaves"),
+        }
+    }
+
+    #[cfg(feature = "single_ref")]
+    /// This was here just to test performance vs double ref.
+    /// double ref seems to win
+    fn iter(&'t self) -> impl Iterator<Item=&'t [NotNan<f64>; D]> {
+        match self {
+            Node::Leaf { points, .. } => points.clone().into_iter(),
+            _ => unreachable!("this function should only be used on leaves"),
+        }
+    }
+
+}
+
+
 type Leaf<'t, const D: usize> = Vec<&'t [NotNan<f64>; D]>;
 
 impl<'t, const D: usize> Tree<'t, D> {
