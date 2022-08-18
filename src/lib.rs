@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 #[cfg(feature = "timing")]
 use num_format::{Locale, ToFormattedString};
 
-
+pub mod query;
 
 // mod medians;
 #[cfg(feature = "timing")]
