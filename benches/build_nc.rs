@@ -1,8 +1,7 @@
-use std::error::Error;
 use fnstw::Tree;
 use ordered_float::NotNan;
 
-use std::time::{Instant, Duration};
+use std::time::Instant;
 use num_format::{Locale, ToFormattedString};
 
 const D: usize = 3;
@@ -26,6 +25,7 @@ fn tree_build_bench() {
             let time = Instant::now();
             let tree = Tree::new(&data, 32).unwrap();
             build_time += time.elapsed().as_nanos();
+            drop(tree)
         }
     }
 
