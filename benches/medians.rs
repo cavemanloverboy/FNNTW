@@ -4,7 +4,7 @@ use pdqselect::select_by_key;
 use ordered_float::NotNan;
 use rand::random;
 
-use std::time::{Instant, Duration};
+use std::time::{Instant};
 use num_format::{Locale, ToFormattedString};
 
 fn main() {
