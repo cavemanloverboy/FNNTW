@@ -104,7 +104,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         let mut nodes = vec![];
 
         // Run recursive build
-        Tree::get_leafnodes(vec_ref, split_level, leafsize, &mut nodes);
+        Tree::<'t, D>::build_nodes(vec_ref, split_level, leafsize, &mut nodes);
 
         #[cfg(feature = "timing")]
         {
@@ -156,8 +156,8 @@ impl<'t, const D: usize> Tree<'t, D> {
 
 
     // A recursive private function.
-    fn get_leafnodes<'a>(
-        mut subset: &'a mut[&'t [NotNan<f64>; D]],
+    fn build_nodes<'a>(
+        subset: &'a mut[&'t [NotNan<f64>; D]],
         mut split_level: usize,
         leafsize: usize,
         nodes: &mut Vec<Node<'t, D>>,
@@ -229,8 +229,8 @@ impl<'t, const D: usize> Tree<'t, D> {
                 STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
 
 
-                let left_handle = Tree::get_leafnodes(left, split_level, leafsize, nodes);
-                let right_handle = Tree::get_leafnodes(right, split_level, leafsize, nodes);
+                let left_handle = Tree::build_nodes(left, split_level, leafsize, nodes);
+                let right_handle = Tree::build_nodes(right, split_level, leafsize, nodes);
 
 
                 let stem = Node::Stem {
