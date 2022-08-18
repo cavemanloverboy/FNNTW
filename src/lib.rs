@@ -14,21 +14,21 @@ static LEAF_VEC_ALLOC: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomi
 #[cfg(feature = "timing")]
 static LEAF_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 #[cfg(feature = "timing")]
-static NODE_MEDIAN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static STEM_MEDIAN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 #[cfg(feature = "timing")]
-static NODE_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static STEM_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 #[cfg(feature = "timing")]
 static mut TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 pub struct Tree<'t, const D: usize> {
     data: &'t [[NotNan<f64>; D]],
     leafsize: usize,
-    nodes: Vec<LeafNode<'t, D>>,
+    nodes: Vec<Node<'t, D>>,
 }
 
 #[derive(Debug)]
-enum LeafNode<'t, const D: usize> {
-    Node {
+enum Node<'t, const D: usize> {
+    Stem {
         split_dim: usize,
         point: &'t [NotNan<f64>; D],
         left: usize,
@@ -81,37 +81,37 @@ impl<'t, const D: usize> Tree<'t, D> {
                 *TOTAL.get_mut() = initial_vec_ref as usize
                     + LEAF_VEC_ALLOC.load(Ordering::SeqCst)
                     + LEAF_WRITE.load(Ordering::SeqCst)
-                    + NODE_MEDIAN.load(Ordering::SeqCst)
-                    + NODE_WRITE.load(Ordering::SeqCst);
+                    + STEM_MEDIAN.load(Ordering::SeqCst)
+                    + STEM_WRITE.load(Ordering::SeqCst);
             }
             
             // Load atomics
             let total = unsafe { TOTAL.load(Ordering::SeqCst) };
             let leaf_write = LEAF_WRITE.load(Ordering::SeqCst);
             let leaf_vec_alloc = LEAF_VEC_ALLOC.load(Ordering::SeqCst);
-            let node_median = NODE_MEDIAN.load(Ordering::SeqCst);
-            let node_write = NODE_WRITE.load(Ordering::SeqCst);
+            let stem_median = STEM_MEDIAN.load(Ordering::SeqCst);
+            let stem_write = STEM_WRITE.load(Ordering::SeqCst);
             
             // Time elapsed strs
             let total_str = total.to_formatted_string(&Locale::en);
             let ivr_str = initial_vec_ref.to_formatted_string(&Locale::en);
             let leaf_write_str = leaf_write.to_formatted_string(&Locale::en);
             let leaf_vec_alloc_str = leaf_vec_alloc.to_formatted_string(&Locale::en);
-            let node_median_str = node_median.to_formatted_string(&Locale::en);
-            let node_write_str = node_write.to_formatted_string(&Locale::en);
+            let stem_median_str = stem_median.to_formatted_string(&Locale::en);
+            let stem_write_str = stem_write.to_formatted_string(&Locale::en);
 
             // Frac strs
             let ivr_frac_str = format!("{:.2}", 100.0 * initial_vec_ref as f64 / total as f64);
             let leaf_write_frac_str = format!("{:.2}", 100.0 * leaf_write as f64 / total as f64);
             let leaf_vec_alloc_frac_str = format!("{:.2}", 100.0 * leaf_vec_alloc as f64 / total as f64);
-            let node_median_frac_str = format!("{:.2}", 100.0 * node_median as f64 / total as f64);
-            let node_write_frac_str = format!("{:.2}", 100.0 * node_write as f64 / total as f64);
+            let stem_median_frac_str = format!("{:.2}", 100.0 * stem_median as f64 / total as f64);
+            let stem_write_frac_str = format!("{:.2}", 100.0 * stem_write as f64 / total as f64);
 
             println!("\nINITIAL_VEC_REF = {} nanos, {}%", ivr_str, ivr_frac_str);
             println!("LEAF_VEC_ALLOC = {} nanos, {}%", leaf_vec_alloc_str, leaf_vec_alloc_frac_str);
             println!("LEAF_WRITE = {} nanos {}%", leaf_write_str, leaf_write_frac_str);
-            println!("NODE_MEDIAN = {} nanos, {}%", node_median_str, node_median_frac_str);
-            println!("NODE_WRITE = {} nanos, {}%", node_write_str, node_write_frac_str);
+            println!("STEM_MEDIAN = {} nanos, {}%", stem_median_str, stem_median_frac_str);
+            println!("STEM_WRITE = {} nanos, {}%", stem_write_str, stem_write_frac_str);
             println!("TOTAL = {}\n", total_str);
         }
 
@@ -128,7 +128,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         mut subset: &'a mut[&'t [NotNan<f64>; D]],
         mut split_level: usize,
         leafsize: usize,
-        nodes: &mut Vec<LeafNode<'t, D>>,
+        nodes: &mut Vec<Node<'t, D>>,
     ) -> usize {
 
         // Increment split level
@@ -159,7 +159,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                         }
                     }
                 }
-                let leaf = LeafNode::Leaf {
+                let leaf = Node::Leaf {
                     points: subset.to_vec(),
                     lower,
                     upper,
@@ -192,16 +192,16 @@ impl<'t, const D: usize> Tree<'t, D> {
                     unsafe { a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim)) }
                 });
                 #[cfg(feature = "timing")]
-                let node_median = timer.elapsed().as_nanos();
+                let stem_median = timer.elapsed().as_nanos();
                 #[cfg(feature = "timing")]
-                NODE_MEDIAN.fetch_add(node_median as usize, Ordering::SeqCst);
+                STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
 
 
                 let left_handle = Tree::get_leafnodes(left, split_level, leafsize, nodes);
                 let right_handle = Tree::get_leafnodes(right, split_level, leafsize, nodes);
 
 
-                let node = LeafNode::Node {
+                let stem = Node::Stem {
                     split_dim,
                     point: median,
                     left: left_handle,
@@ -210,12 +210,12 @@ impl<'t, const D: usize> Tree<'t, D> {
 
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
-                let node_index = nodes.len();
-                nodes.push(node);
+                let stem_index = nodes.len();
+                nodes.push(stem);
                 #[cfg(feature = "timing")]
                 let node_write = timer.elapsed().as_nanos();
                 #[cfg(feature = "timing")]
-                NODE_WRITE.fetch_add(node_write as usize, Ordering::SeqCst);
+                STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
 
                 node_index
             }
