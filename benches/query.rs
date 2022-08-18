@@ -33,7 +33,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 })
                 .collect();
             drop(v)
-        } ));        
+        } ));
     }
     group.finish();
 

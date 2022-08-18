@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use num_format::{Locale, ToFormattedString};
 
 pub mod query;
+pub mod distance;
 
 // mod medians;
 #[cfg(feature = "timing")]
@@ -20,8 +21,8 @@ static STEM_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 #[cfg(feature = "timing")]
 static mut TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// This [`Tree`] struct is the core struct that holds all nodes in the kdtree.
 pub struct Tree<'t, const D: usize> {
-    data: &'t [[NotNan<f64>; D]],
     leafsize: usize,
     nodes: Vec<Node<'t, D>>,
 }
@@ -148,7 +149,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
 
         Ok(Tree {
-            data,
+            // data,
             leafsize,
             nodes,
         })
