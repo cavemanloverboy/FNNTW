@@ -245,11 +245,11 @@ impl<'t, const D: usize> Tree<'t, D> {
                 let stem_index = nodes.len();
                 nodes.push(stem);
                 #[cfg(feature = "timing")]
-                let node_write = timer.elapsed().as_nanos();
+                let stem_write = timer.elapsed().as_nanos();
                 #[cfg(feature = "timing")]
                 STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
 
-                node_index
+                stem_index
             }
         }
     }
