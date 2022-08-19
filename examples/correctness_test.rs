@@ -1,8 +1,8 @@
 use fnntw::Tree;
+use ndarray_npy::write_npy;
 use ordered_float::NotNan;
 use rayon::prelude::*;
 use std::error::Error;
-use ndarray_npy::write_npy;
 
 // const DIMS: usize = 2;
 // const NDATA: usize = 10;
@@ -16,7 +16,6 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-
     rayon::ThreadPoolBuilder::new()
         .num_threads(48)
         .build_global()?;
@@ -54,10 +53,9 @@ fn get_queries() -> Vec<[NotNan<f64>; DIMS]> {
     gen_points::<NQUERY>()
 }
 
-
 fn gen_points<const N: usize>() -> Vec<[NotNan<f64>; DIMS]> {
     (0..N)
-        .map(|_| [(); DIMS].map(|_| unsafe { NotNan::new_unchecked(rand::random())}))
+        .map(|_| [(); DIMS].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
         .collect()
 }
 
@@ -69,11 +67,17 @@ fn save_results(sqdists: Vec<f64>, indices: Vec<u64>) -> Result<(), Box<dyn Erro
 
 fn save_data_queries(
     data: &Vec<[NotNan<f64>; DIMS]>,
-    queries: &Vec<[NotNan<f64>; DIMS]>
+    queries: &Vec<[NotNan<f64>; DIMS]>,
 ) -> Result<(), Box<dyn Error>> {
     let flat_data: Vec<f64> = data.iter().flat_map(|p| p.map(|x| *x)).collect();
     let flat_query: Vec<f64> = queries.iter().flat_map(|p| p.map(|x| *x)).collect();
-    write_npy(DATA_FILE, &ndarray::Array2::from_shape_vec((NDATA, DIMS), flat_data)?)?;
-    write_npy(QUERY_FILE, &ndarray::Array2::from_shape_vec((NQUERY, DIMS), flat_query)?)?;
+    write_npy(
+        DATA_FILE,
+        &ndarray::Array2::from_shape_vec((NDATA, DIMS), flat_data)?,
+    )?;
+    write_npy(
+        QUERY_FILE,
+        &ndarray::Array2::from_shape_vec((NQUERY, DIMS), flat_query)?,
+    )?;
     Ok(())
 }
