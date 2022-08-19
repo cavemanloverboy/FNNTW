@@ -18,16 +18,18 @@ fn criterion_benchmark(c: &mut Criterion) {
             .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) } ))
             .collect();
 
+        group.bench_function(format!("Build (ndata = {ndata})").as_str(), |b| b.iter(|| {
+            let tree = Tree::new(black_box(&data), black_box(32)).unwrap();
+            drop(tree)
+        } ));     
+
         for par_split in 1..3 {
             group.bench_function(format!("Parallel({par_split}) Build (ndata = {ndata})").as_str(), |b| b.iter(|| {
                 let tree = Tree::new_parallel(black_box(&data), black_box(32), black_box(par_split)).unwrap();
                 drop(tree)
             } ));
         }
-        group.bench_function(format!("Build (ndata = {ndata})").as_str(), |b| b.iter(|| {
-            let tree = Tree::new(black_box(&data), black_box(32)).unwrap();
-            drop(tree)
-        } ));     
+ 
     }
     group.finish();
 
