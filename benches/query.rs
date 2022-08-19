@@ -12,7 +12,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     // rayon::ThreadPoolBuilder::new()
     //     .num_threads(1)
-    //     .build_global();
+    //     .build_global()
+    //     .unwrap();
 
     let mut group = c.benchmark_group("sample-size-example");
     group.sample_size(100);
@@ -35,7 +36,10 @@ fn criterion_benchmark(c: &mut Criterion) {
             let v: Vec<_> = black_box(&query)
                 .par_iter()
                 .map_with(black_box(&tree), |t, q| {
-                    t.query_nearest(black_box(q))
+                    let (dist, idx, ptr) = t.query_nearest(black_box(q));
+                    drop(dist);
+                    drop(idx);
+                    drop(ptr);
                 })
                 .collect();
             drop(v)

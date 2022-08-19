@@ -1,5 +1,6 @@
 use ordered_float::NotNan;
 
+use std::collections::HashMap;
 #[cfg(feature = "timing")]
 use std::sync::atomic::Ordering;
 
@@ -34,7 +35,8 @@ const IS_RIGHT: bool = false;
 pub struct Tree<'t, const D: usize> {
     
     // Data in the tree
-    data: &'t [([NotNan<f64>; D])],
+    // data: &'t [([NotNan<f64>; D])],
+    data_index: HashMap<&'t [NotNan<f64>; D], u64>,
 
     // For future/user reference
     #[allow(unused)]
@@ -150,9 +152,17 @@ impl<'t, const D: usize> Tree<'t, D> {
         #[cfg(feature = "timing")]
         let timer = std::time::Instant::now();
         let vec_ref: &mut [&'t [NotNan<f64>; D]] = &mut data.iter().collect::<Vec<_>>();
+        // let data_index_map = data.iter().zip(0_u64..).collect::<HashMap<_,_>>();
         #[cfg(feature = "timing")]
         let initial_vec_ref = timer.elapsed().as_nanos();
         let mut nodes = vec![];
+
+        // Build index in the background
+        std::thread::scope(|s| {
+            let data_idx_handle = s.spawn(move ||{
+                data.iter().zip(0_u64..).collect::<HashMap<_,_>>()
+            });
+
 
         // Run recursive build
         Tree::<'t, D>::build_nodes::<FIRST, true>(vec_ref, split_level, leafsize, &mut nodes, None, None);
@@ -199,10 +209,11 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
 
         Ok(Tree {
-            data,
+            data_index: data_idx_handle.join().unwrap(),
             leafsize,
             nodes,
             height_hint,
+        })
         })
     }
 

@@ -4,9 +4,9 @@ use crate::{Tree, Node, distance::*};
 impl<'t, const D: usize> Tree<'t, D> {
 
     pub fn query_nearest(
-        &self,
+        &'t self,
         query: &[NotNan<f64>; D]
-    ) -> (f64, u64) {
+    ) -> (f64, u64, &'t [NotNan<f64>; D]) {
 
         // Initialize a reference to the root node
         let current_node: &Node<'t, D> = unsafe { self.nodes.last().unwrap_unchecked() };
@@ -19,15 +19,14 @@ impl<'t, const D: usize> Tree<'t, D> {
         let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> = Vec::with_capacity(self.height_hint);
 
         let mut current_best_dist_sq = std::f64::MAX;
-        let mut current_best_neighbor: &[NotNan<f64>; D] = unsafe { self.nodes.last().unwrap_unchecked().stem_position() };
+        let mut current_best_neighbor: &'t [NotNan<f64>; D] = unsafe { self.nodes.last().unwrap_unchecked().stem_position() };
 
         // Recurse down (and then up and down) the stem
         self.check_stem(query, current_node, &mut current_best_dist_sq, &mut current_best_neighbor, &mut points_to_check);
 
-        let current_best_neighbor_index = self.data
-            .iter()
-            .position(|d| d.eq(current_best_neighbor)).unwrap() as u64;
-        (current_best_dist_sq, current_best_neighbor_index)
+        let best_idx = self.data_index[current_best_neighbor];
+
+        (current_best_dist_sq, best_idx, current_best_neighbor)
     }
 
     #[inline(always)]
