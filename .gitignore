@@ -1,3 +1,4 @@
 /target
 /Cargo.lock
-/*.npy
+*.npy
+examples/viz_tree.py
