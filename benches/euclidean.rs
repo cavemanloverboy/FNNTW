@@ -1,4 +1,4 @@
-use fnstw::distance::*;
+use fnntw::distance::*;
 use ordered_float::NotNan;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};

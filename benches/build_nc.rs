@@ -1,4 +1,4 @@
-use fnstw::Tree;
+use fnntw::Tree;
 use ordered_float::NotNan;
 
 use std::time::Instant;

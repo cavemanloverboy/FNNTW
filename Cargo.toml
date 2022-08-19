@@ -1,6 +1,10 @@
 [package]
-name = "fnstw"
+name = "fnntw"
 version = "0.1.0"
+description = "A short description of my package"
+authors = ["Cavey Cool <caveycool@gmail.com>"]
+repository = "https://github.com/cavemanloverboy/fnstw"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
@@ -35,7 +39,7 @@ name = "build"
 harness = false
 
 [[bench]]
-name = "build_nc"
+name = "build_nc" # nc stands for no criterion
 harness = false
 
 [[bench]]

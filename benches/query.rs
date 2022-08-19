@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use fnstw::Tree;
+use fnntw::Tree;
 use ordered_float::NotNan;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
