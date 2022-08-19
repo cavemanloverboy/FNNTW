@@ -28,14 +28,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Build tree
     let leafsize = 4;
-    let tree = Tree::new(&data, leafsize)?;
+    let tree = Tree::new_parallel(&data, leafsize, 3)?;
     println!("Built tree");
 
     // Query tree, in parallel
     let (sqdists, indices): (Vec<f64>, Vec<u64>) = queries
         .par_iter()
         // .iter()
-        .map_with(&tree, |t, q| t.query_nearest(q))
+        .map_with(&tree, |t, q| {
+            let result = t.query_nearest(q);
+            (result.0, result.1)
+        })
         // .map(|q| tree.query_nearest(q))
         .unzip();
     println!("Queried");
