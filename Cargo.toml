@@ -14,7 +14,6 @@ single_ref = []
 
 [dependencies]
 ordered-float = "3.0.0"
-parking_lot = "0.12.1"
 num-format = "0.4.0"
 
 [profile.release]
