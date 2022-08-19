@@ -3,8 +3,8 @@ from time import time
 from pykdtree.kdtree import KDTree
 from scipy.spatial import cKDTree as Tree
 
-# USE_SCIPY = True
-USE_SCIPY = False
+USE_SCIPY = True
+# USE_SCIPY = False
 
 NRAND = 10**5
 NQUERY = 10**6
@@ -41,7 +41,7 @@ for run in range(RUNS):
     query_time += qt
     
     # Print run results
-    print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
+    #print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
 
 avg_build = build_time / RUNS
 avg_query = query_time / RUNS
