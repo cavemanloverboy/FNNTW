@@ -1,6 +1,6 @@
-# FNSTW: Fastest Neighbor Search (in the) West
+# FNNTW: Fastest Nearest Neighbor (in the) West
 
-Fastest Neighbor Search (in the) West is an in-development kDtree library that aims to be one of the most, if not the most, performant parallel kNN libraries that exist.
+Fastest Neighbor Nearest Neighbor (in the) West is an in-development kDtree library that aims to be one of the most, if not the most, performant parallel kNN libraries that exist.
 
 There are several key components of the building and querying process of the kDtrees that allows for its performance.
 
@@ -35,10 +35,10 @@ Over 100 realizations of the datasets and query points, the following results ar
 
 |  Code | Build (ms)| Query (ms) | Total (ms) |
 |---|---|---|---|
-| FNSTW| 11 | 28 | 39 |
+| FNNTW| 11 | 28 | 39 |
 | pykdtree (python)| 12 | 36 | 48  |
 | nabo-rs (rust)| 25 | 30  | 55 |
 | Scipy's cKDTree (python) | 31 | 47 | 78 |
 | kiddo (rust)| 26 | 84 | 110 |
 
-With FNSTW's parallel build capability, the build time goes as low as 8.7 ms on the AMD EPYC 7502P. Since the overhead of the parallelism and atomic operations slows down the build when the number of datapoints is small, both a parallel build and non_parallel build are available via `Tree:new(..)` and `Tree::new_parallel(..)`. The latter takes the aforementioned parameter `par_split_level`, which is the split depth at which the parallelism begins. For our applications of O(1e5) points, we see the biggest improvement for `par_split_level = 1` (and we recommend this value for datasets of this size or smaller), but we suspect that the optimal `par_split_level` will increase with the size of the dataset.
+With FNNTW's parallel build capability, the build time goes as low as 8.7 ms on the AMD EPYC 7502P. Since the overhead of the parallelism and atomic operations slows down the build when the number of datapoints is small, both a parallel build and non_parallel build are available via `Tree:new(..)` and `Tree::new_parallel(..)`. The latter takes the aforementioned parameter `par_split_level`, which is the split depth at which the parallelism begins. For our applications of O(1e5) points, we see the biggest improvement for `par_split_level = 1` (and we recommend this value for datasets of this size or smaller), but we suspect that the optimal `par_split_level` will increase with the size of the dataset.
