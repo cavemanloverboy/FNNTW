@@ -1,4 +1,4 @@
-use ordered_float::NotNan;
+pub use ordered_float::NotNan;
 
 use std::{collections::HashMap, sync::{Arc, RwLock}};
 #[cfg(feature = "timing")]
