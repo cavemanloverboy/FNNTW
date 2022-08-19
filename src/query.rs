@@ -3,6 +3,8 @@ use crate::{Tree, Node, distance::*};
 
 impl<'t, const D: usize> Tree<'t, D> {
 
+    /// Given a query point `query`, query the tree and return point's nearest neighbor.
+    /// The value returned is (`distance_to_neighbor: f64`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<f64>; D]`).
     pub fn query_nearest(
         &'t self,
         query: &[NotNan<f64>; D]

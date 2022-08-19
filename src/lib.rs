@@ -31,26 +31,27 @@ const IS_LEFT: bool = true;
 const IS_RIGHT: bool = false;
 
 
-/// This [`Tree`] struct is the core struct that holds all nodes in the kdtree.
+/// This [`Tree`] struct is the core struct that holds all nodes in the kdtree. 
+/// It also contains the hashmap that is used to index the data.
 pub struct Tree<'t, const D: usize> {
     
     // Data in the tree
     // data: &'t [([NotNan<f64>; D])],
-    data_index: HashMap<&'t [NotNan<f64>; D], u64>,
+    pub data_index: HashMap<&'t [NotNan<f64>; D], u64>,
 
-    // For future/user reference
+    // Unused, but here for future/user reference
     #[allow(unused)]
-    leafsize: usize,
+    pub leafsize: usize,
 
     // Container of all nodes (stems, leaves), in the tree
-    nodes: Vec<Node<'t, D>>,
+    pub nodes: Vec<Node<'t, D>>,
 
     // Approximate height (used for determining some allocation sizes)
-    height_hint: usize,
+    pub height_hint: usize,
 }
 
 #[derive(Debug)]
-enum Node<'t, const D: usize> {
+pub enum Node<'t, const D: usize> {
     Stem {
         split_dim: usize,
         point: &'t [NotNan<f64>; D],
@@ -123,6 +124,10 @@ type Leaf<'t, const D: usize> = Vec<&'t [NotNan<f64>; D]>;
 
 impl<'t, const D: usize> Tree<'t, D> {
 
+
+    /// Create a new FNSTW kdTree [Tree] using a parallel build. The parameter
+    /// `par_split_level` specified the depth (during the build) at which the
+    /// parallelism begins.
     pub fn new_parallel(
         data: &'t [[NotNan<f64>; D]],
         leafsize: usize,
@@ -427,6 +432,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
     }
 
+    /// Create a new FNSTW kdTree [Tree] using a nonparallel build.
     pub fn new(
         data: &'t [[NotNan<f64>; D]],
         leafsize: usize,
