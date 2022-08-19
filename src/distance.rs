@@ -15,7 +15,6 @@ pub fn squared_euclidean<const D: usize>(
         }
     }
 
-    // unsafe { NotNan::new_unchecked(dist_sq) }
     dist_sq
 }
 
@@ -23,7 +22,7 @@ pub fn squared_euclidean<const D: usize>(
 pub fn squared_euclidean_sep<const D: usize>(
     a: &[NotNan<f64>; D],
     b: &[NotNan<f64>; D],
-) -> NotNan<f64> {
+) -> f64 {
 
     // Initialize diff array
     let mut diff = [0.0_f64; D];
@@ -34,17 +33,20 @@ pub fn squared_euclidean_sep<const D: usize>(
         }
     }
 
-    unsafe { NotNan::new_unchecked(diff.iter().map(|x| x*x).sum()) }
+    diff.iter().map(|x| x*x).sum()
 }
 
 
 #[inline(always)]
-pub fn new_best<'a, 'b, 'c, const D: usize>(
-    query: &'c [NotNan<f64>; D],
-    candidate: &'b [NotNan<f64>; D],
-    current_best_dist_sq: &'a mut f64,
-    current_best_candidate: &'a mut &'b [NotNan<f64>; D]
-) -> bool {
+pub fn new_best<'i, 'o, const D: usize>(
+    query: &[NotNan<f64>; D],
+    candidate: &'i [NotNan<f64>; D],
+    current_best_dist_sq: &'o mut f64,
+    current_best_candidate: &'o mut &'i [NotNan<f64>; D]
+) -> bool 
+where
+    'i: 'o
+{
 
     debug_assert!(*current_best_dist_sq >= 0.0, "distance must be nonnegative");
 
@@ -63,6 +65,35 @@ pub fn new_best<'a, 'b, 'c, const D: usize>(
     }
 
 }
+
+/// Calculate the distance from `query` to some space defined by `lower` and `upper`.
+/// 
+/// This function constructs a point (neither in the tree nor is it `query`) that
+/// represents the point in the space defined by `lower` and `upper` that is closest
+/// to `query`. Then, it computes the squared euclidean distance between the two.
+pub fn calc_dist_sq_to_space<const D: usize>(
+    query: &[NotNan<f64>; D],
+    lower: &[NotNan<f64>; D],
+    upper: &[NotNan<f64>; D],
+) -> f64 {
+
+    // Initilalize a point 
+    let mut closest_point = [unsafe { NotNan::new_unchecked(0.0_f64) }; D];
+
+
+    for i in 0..D {
+        unsafe { 
+            *closest_point.get_unchecked_mut(i) = *query.get_unchecked(i)
+                .min(upper.get_unchecked(i))
+                .max(lower.get_unchecked(i));
+        }
+    }
+    
+    // Calculate squared euclidean distance between this point and the query
+    squared_euclidean(query, &closest_point)
+}
+
+
 
 /// This uses a short circuiting squared euclidean comparison.
 /// 
@@ -105,4 +136,75 @@ pub fn new_best_short<'a, 'b, 'c, const D: usize>(
     *current_best_dist_sq = dist_sq;
     *current_best_candidate = candidate;
     true
+}
+
+#[cfg(test)]
+mod tests {
+
+    use approx_eq::assert_approx_eq;
+    use ordered_float::NotNan;
+    use crate::distance::squared_euclidean;
+
+    use super::calc_dist_sq_to_space;
+
+    #[test]
+    fn test_squared_euclidean() {
+
+        use approx_eq::assert_approx_eq;
+
+        unsafe {
+            let a = [NotNan::new_unchecked(1.0), NotNan::new_unchecked(1.0)];
+            let b = [NotNan::new_unchecked(0.0), NotNan::new_unchecked(0.0)];
+
+            assert_approx_eq!(
+                squared_euclidean(&a, &b),
+                2.0
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_dist_to_space_above() {
+        unsafe {
+
+            let query = &[NotNan::new_unchecked(2.0); 3];
+            let lower = &[NotNan::new_unchecked(0.0); 3];
+            let upper = &[NotNan::new_unchecked(1.0); 3];
+
+            assert_approx_eq!(
+                calc_dist_sq_to_space(query, lower, upper),
+                3.0
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_dist_to_space_below() {
+        unsafe {
+            
+            let query = &[NotNan::new_unchecked(-1.0); 3];
+            let lower = &[NotNan::new_unchecked(0.0); 3];
+            let upper = &[NotNan::new_unchecked(1.0); 3];
+
+            assert_approx_eq!(
+                calc_dist_sq_to_space(query, lower, upper),
+                3.0
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_dist_to_space_within() {
+        unsafe {
+            
+            let query = &[NotNan::new_unchecked(0.5); 3];
+            let lower = &[NotNan::new_unchecked(0.0); 3];
+            let upper = &[NotNan::new_unchecked(1.0); 3];
+
+            assert_approx_eq!(
+                calc_dist_sq_to_space(query, lower, upper),
+                0.0
+            );
+        }
+    }
 }

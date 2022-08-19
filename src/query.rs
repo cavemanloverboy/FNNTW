@@ -1,118 +1,168 @@
 use ordered_float::NotNan;
 use crate::{Tree, Node, distance::*};
 
-
 impl<'t, const D: usize> Tree<'t, D> {
 
-    // pub fn query_nearest(
-    //     &'t self,
-    //     query: &'t [NotNan<f64>; D]
-    // ) -> &'t [NotNan<f64>; D] {
-
-    //     // Initialize a reference to the root node
-    //     let mut current_leafnode: &'t Node<'t, D> = unsafe { self.nodes.last().unwrap_unchecked() };
-    
-    //     // Navigate down the stems until we reach a leaf
-    //     while current_leafnode.is_stem() {
-
-    //         // // Unpack node info
-    //         // let (split_dim, point, left, right) = current_leafnode.node_info();
-    //         let next_leafnode = match current_leafnode {
-            
-    //             Node::Stem { ref split_dim, point, ref left, ref right } => {
-    //             // Determine left/right split
-    //                 if unsafe { query.get_unchecked(*split_dim) > point.get_unchecked(*split_dim) } {
-
-    //                     // Right Branch
-    //                     right
-    //                 } else { 
-
-    //                     // Left Branch
-    //                     left
-    //                 }
-    //             },
-    //             _ => unreachable!("this must be a node")
-    //         };
-
-    //         // Set leafnode
-    //         current_leafnode = unsafe { self.nodes.get_unchecked(*next_leafnode) };
-            
-    //     };
-
-    //     // Find closest point in this leaf
-    //     // TODO: this is not the nearest neighbor, just the nearest neighbor in this leaf
-    //     let neighbor: &'t [NotNan<f64>; D] = current_leafnode
-    //         .iter()
-    //         .fold((std::f64::MAX, query), |(min_dist, neighbor), node| {
-            
-    //             // Calculate distance to this point in leaf
-    //             let dist = squared_euclidean(query, node);
-
-    //             if min_dist.gt(&dist) {
-                    
-    //                 // New closest neighbor
-    //                 (dist, node)
-    //             } else {
-    //                 // unchanged
-    //                 (min_dist, neighbor)
-    //             }
-
-    //         }).1;
-
-    //     neighbor
-    // }
-
-
     pub fn query_nearest(
-        &'t self,
-        query: &'t [NotNan<f64>; D]
-    ) -> &'t [NotNan<f64>; D] {
+        &self,
+        query: &[NotNan<f64>; D]
+    ) -> (f64, u64) {
 
         // Initialize a reference to the root node
-        let mut current_leafnode: &'t Node<'t, D> = unsafe { self.nodes.last().unwrap_unchecked() };
+        let current_node: &Node<'t, D> = unsafe { self.nodes.last().unwrap_unchecked() };
     
-        // Navigate down the stems until we reach a leaf
-        while current_leafnode.is_stem() {
+        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
+        // and distance to their associated space in form of (&usize, f64), where usize is 
+        // the index inside of self.nodes. The root node is checked at the end.
+        //
+        // TODO: test usize vs &usize
+        let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> = Vec::with_capacity(self.height_hint);
 
-            // // Unpack node info
-            // let (split_dim, point, left, right) = current_leafnode.node_info();
-            let next_leafnode = match current_leafnode {
+        let mut current_best_dist_sq = std::f64::MAX;
+        let mut current_best_neighbor: &[NotNan<f64>; D] = unsafe { self.nodes.last().unwrap_unchecked().stem_position() };
+
+        // Recurse down (and then up and down) the stem
+        self.check_stem(query, current_node, &mut current_best_dist_sq, &mut current_best_neighbor, &mut points_to_check);
+
+        let current_best_neighbor_index = self.data
+            .iter()
+            .position(|d| d.eq(current_best_neighbor)).unwrap() as u64;
+        (current_best_dist_sq, current_best_neighbor_index)
+    }
+
+    #[inline(always)]
+    /// Upon checking that we are close to some other space during upward traversal of the tree,
+    /// this function is called to check candidates in the child space, appending any new candidate spaces
+    /// as we go along
+    fn check_child<'i, 'o>(
+        &'i self,
+        query: &[NotNan<f64>; D],
+        sibling: &usize,
+        // check's the parent of the sibling (also our parent)
+        stem_position: &'i [NotNan<f64>; D],
+        current_best_dist_sq: &'o mut f64,
+        current_best_neighbor: &'o mut &'i [NotNan<f64>; D],
+        points_to_check: &'o mut Vec<(&'i usize, &'i [NotNan<f64>; D], f64)>,
+    ) 
+    where
+        'i: 'o,
+        't: 'i
+    {
+        let sibling = unsafe { self.nodes.get_unchecked(*sibling) };
+        match sibling {
             
-                Node::Stem { ref split_dim, point, ref left, ref right } => {
-                // Determine left/right split
+            // Sibling is a leaf
+            Node::Leaf { points, .. } => {
+                // the stem_position here is the position of the parent
+                self.check_parent(query, stem_position, current_best_dist_sq, current_best_neighbor);
+                self.check_leaf(query, points, current_best_dist_sq, current_best_neighbor)
+            },
+
+            // Sibling is a parent (e.g. for unbalanced tree)
+            Node::Stem { .. } => {
+                self.check_parent(query, stem_position, current_best_dist_sq, current_best_neighbor);
+                self.check_stem(query, sibling, current_best_dist_sq, current_best_neighbor, points_to_check)
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn check_leaf<'a, 'b>(
+        &self,
+        query: &'b [NotNan<f64>; D],
+        // leaf_points: &'t Vec<&'t [NotNan<f64>; D]>,
+        leaf_points: impl IntoIterator<Item = &'b &'a[NotNan<f64>; D]>,
+        current_best_dist_sq: &mut f64,
+        current_best_neighbor: &mut &'a [NotNan<f64>; D]
+    ) 
+    where
+        'a: 'b
+    {
+        // Check all points in leaf
+        for candidate in leaf_points.into_iter() {   
+            new_best(query, candidate, current_best_dist_sq, current_best_neighbor);
+        }
+    }
+
+    /// If sibling is a stem, then we need to recurse back down
+    #[inline(always)]
+    fn check_stem<'i, 'o>(
+        &'i self,
+        query: &[NotNan<f64>; D],
+        stem: &'i Node<D>,
+        current_best_dist_sq: &'o mut f64,
+        current_best_neighbor: &'o mut &'i [NotNan<f64>; D],
+        points_to_check: &'o mut Vec<(&'i usize, &'i [NotNan<f64>; D], f64)>,
+    ) 
+    where
+        'i: 'o,
+        't: 'i
+    {
+        
+       // Navigate down the stems until we reach a leaf
+       let mut current_node = stem;
+
+        while current_node.is_stem() {
+
+            let next_leafnode = match current_node {
+            
+                Node::Stem { ref split_dim, point, left, ref right, .. } => {
+                
+                    // Determine left/right split
                     if unsafe { query.get_unchecked(*split_dim) > point.get_unchecked(*split_dim) } {
+
+
+                        // Record sibling node and the dist_sq to sibling's associated space
+                        let (sibling_lower, sibling_upper) = unsafe { self.nodes.get_unchecked(*left) }.get_bounds();
+                        let dist_sq_to_space = calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
+                        points_to_check.push((left, point, dist_sq_to_space));
 
                         // Right Branch
                         right
+
                     } else { 
+
+                        // Record sibling node and the dist_sq to its associated space
+                        let (sibling_lower, sibling_upper) = unsafe { self.nodes.get_unchecked(*right) }.get_bounds();
+                        let dist_sq_to_space = calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
+                        points_to_check.push((right, point, dist_sq_to_space));
 
                         // Left Branch
                         left
                     }
                 },
-                _ => unreachable!("this must be a node")
+                _ => unreachable!("we are traversing though stems")
             };
 
             // Set leafnode
-            current_leafnode = unsafe { self.nodes.get_unchecked(*next_leafnode) };
+            current_node = unsafe { self.nodes.get_unchecked(*next_leafnode) };
             
         };
 
-        // Find closest point in this leaf
-        // TODO: this is not the nearest neighbor, just the nearest neighbor in this leaf
+        // We are now at a leaf; check it
+        self.check_leaf(query, current_node.iter(), current_best_dist_sq, current_best_neighbor);
 
-        // Initialize best with first entry in leaf
-        let mut current_leafnode_iter = current_leafnode.iter();
-        let mut current_best_neighbor = unsafe { *current_leafnode_iter.next().unwrap_unchecked() };
-        let mut current_best_dist_sq: f64 = squared_euclidean(query, current_best_neighbor);
-
-        // Check all other points in leaf
-        for candidate in  current_leafnode_iter {   
-            new_best(query, candidate, &mut current_best_dist_sq, &mut current_best_neighbor);
+        // Now we empty out the queue
+        // if points_to_check.len() > 1{ println!("{points_to_check:?}"); }
+        while let Some((sibling, parent, dist_sq_to_space)) = points_to_check.pop() {
+            if dist_sq_to_space < *current_best_dist_sq {
+                self.check_child(query, sibling, parent, current_best_dist_sq, current_best_neighbor, points_to_check);
+            }
         }
+    }
 
-        current_best_neighbor
+    #[inline(always)]
+    fn check_parent<'i, 'o>(
+        &self,
+        query: &[NotNan<f64>; D],
+        stem_position: &'i [NotNan<f64>; D],
+        current_best_dist_sq: &'o mut f64,
+        current_best_neighbor: &'o mut &'i [NotNan<f64>; D]
+    )
+    where
+        'i: 'o,
+        't: 'i,
+    {
+        new_best(query, stem_position, current_best_dist_sq, current_best_neighbor);
     }
 }
-
-
