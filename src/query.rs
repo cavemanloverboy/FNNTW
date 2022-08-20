@@ -171,7 +171,6 @@ impl<'t, const D: usize> Tree<'t, D> {
         );
 
         // Now we empty out the queue
-        // if points_to_check.len() > 1{ println!("{points_to_check:?}"); }
         while let Some((sibling, parent, dist_sq_to_space)) = points_to_check.pop() {
             if dist_sq_to_space < *current_best_dist_sq {
                 self.check_child(
