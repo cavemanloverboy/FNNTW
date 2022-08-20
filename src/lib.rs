@@ -160,7 +160,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         // let data_index_map = data.iter().zip(0_u64..).collect::<HashMap<_,_>>();
         #[cfg(feature = "timing")]
         let initial_vec_ref = timer.elapsed().as_nanos();
-        let nodes = Arc::new(RwLock::new(vec![]));
+        let nodes = Arc::new(RwLock::new(Vec::with_capacity(size_of_tree(data_len, leafsize))));
 
         // Build index in the background
         std::thread::scope(|s| {
@@ -781,13 +781,65 @@ mod tests {
         let leafsize = 32;
 
         let tree = Tree::new(&data, leafsize).unwrap();
-        for node in &tree.nodes {
-            println!("{node:?}")
-        }
         assert_eq!(tree.size(), 3);
     }
 }
 
 pub fn ilog2(x: usize) -> usize {
     (x as f64).log2() as usize
+}
+
+
+fn size_of_tree(datalen: usize, leafsize: usize) -> usize {
+    if datalen == 0 {
+        0
+    } else if datalen <= leafsize {
+        1
+    } else {
+        let left = datalen / 2 - 1;
+        let right = datalen / 2 - datalen % 2;
+        1 + size_of_tree(left, leafsize) + size_of_tree(right, leafsize) 
+    }
+}
+
+#[test]
+fn test_size_of_tree() {
+
+    //   1
+    // 2   2
+    let datalen = 5;
+    let leafsize = 4;
+    assert_eq!(size_of_tree(datalen, leafsize), 3);
+
+    //   1
+    // 4   4
+    let datalen = 9;
+    let leafsize = 4;
+    assert_eq!(size_of_tree(datalen, leafsize), 3);
+
+    //   1
+    // 4   1
+    //    2 2
+    let datalen = 10;
+    let leafsize = 4;
+    assert_eq!(size_of_tree(datalen, leafsize), 5);
+
+    //     1
+    //   1   1
+    //  5 6 5 6
+    let datalen = 23;
+    let leafsize = 7;
+    assert_eq!(size_of_tree(datalen, leafsize), 7);
+
+    //      1
+    //   1     1
+    // 24 24 24 25
+    let datalen = 100;
+    let leafsize = 32;
+    assert_eq!(size_of_tree(datalen, leafsize), 7);
+
+    // Too large
+    let datalen = 100_000;
+    let leafsize = 32;
+    assert_eq!(size_of_tree(datalen, leafsize), 8191);
 }
