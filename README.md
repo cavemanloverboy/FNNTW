@@ -6,7 +6,7 @@ There are several key components of the building and querying process of the kDt
 
 ### 1. Building The Tree
 ##### a. Using Quickselect
-By using the quickselect in the form of rust's `select_nth_unstable_by` in Rust's `core::slice` instead of an average or even some other median algorithm, we get the `left` and `right` subsets for free in the same O(N) algorithm instead of having to do yet another O(N) comparisons to obtain the `left` and `right` bins. As such, the build is still O(N log(N)), but removes a whole O(N) operation that is found in many other libraries during each splitting.
+By using the quickselect in the form of `select_nth_unstable_by` in Rust's `core::slice` instead of an average or even some other median algorithm, we get the `left` and `right` subsets for free in the same O(N) algorithm instead of having to do yet another O(N) comparisons to obtain the `left` and `right` bins. As such, the build is still O(N log(N)), but removes a whole O(N) operation that is found in many other libraries during each splitting.
 
 ##### b. Parallel build
 Many kD-Tree build implementations are not parallel. Every branch (and subbranch) of the tree is an independent kD-tree. After some number of splittings, one could throw the builds of the remaining branches on different threads. This is done here at the user-specified `par_split_level`, which is the tree depth at which the parallelism begins.
