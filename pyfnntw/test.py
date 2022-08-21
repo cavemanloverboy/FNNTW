@@ -1,34 +1,27 @@
 import pyfnntw;
 import numpy as np;
+from scipy.spatial import cKDTree as Tree
 from time import time
 
 ND = 10**5
 NQ = 10**6
-RUNS = 100
+RUNS = 10
+TRIALS = 10
+WARMUP = 5
 
-overall_build_time = 0
-overall_query_time = 0
-for _ in range(RUNS):
-    
-    # Define data, query
-    data = np.random.uniform(size=(ND, 3))
-    query = np.random.uniform(size=(NQ, 3))
+# Get some data and queries
+data = np.random.uniform(size=(ND, 3))
+query = np.random.uniform(size=(NQ, 3))
 
-    # Build tree
-    start = time()
-    tree = pyfnntw.Tree(data, 32)
-    build_time = (time() - start) * 1000
-    overall_build_time += build_time
+# Build and query the pynntw tree
+tree1 = pyfnntw.Tree(data, 32, 1)
+(_, ids1) = tree1.query(query)
 
-    # query tree
-    start = time()
-    (r, ids) = tree.query(query)
-    query_time = (time() - start) * 1000
-    overall_query_time += query_time
+# Build and query the scipy tree
+tree2 = Tree(data, 32)
+(_, ids2) = tree2.query(query)
 
-    print(f"{build_time=:.2f} ms, {query_time=:.2f} ms")
-
-avg_build = overall_build_time / RUNS
-avg_query = overall_query_time / RUNS
-
-print(f"Results: {avg_build=:.2f} ms, {avg_query=:.2f} ms")
+if np.all(ids1 == ids2):
+    print("Success")
+else:
+    print("Failure")
