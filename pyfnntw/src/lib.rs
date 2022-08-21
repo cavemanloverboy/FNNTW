@@ -6,7 +6,7 @@ use ouroboros::*;
 use numpy::ndarray::{Axis, Array1, ArrayView2};
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
 use rayon::prelude::{ParallelBridge, ParallelIterator};
-use rayon::prelude::*;
+use rayon::{prelude::*, ThreadPoolBuildError};
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -22,13 +22,22 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
         #[new]
         fn new(
             data: PyReadonlyArray2<'_, f64>,
-            leafsize: usize
+            leafsize: usize,
+            par_split_level: Option<usize>,
         ) -> PyResult<Tree> {
 
-            // Not handling result on purpose
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(std::thread::available_parallelism()?.into())
-                .build_global();
+            let threads = std::thread::available_parallelism()?.into();
+            match rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build_global() {
+                    Ok(_) => println!("Parallelism activated: {threads} threads"),
+                    err => {
+                        let err = err.unwrap_err();
+                        if !err.to_string().contains("The global thread pool has already been initialized") {
+                            println!("Unable to activate parallelism: {err}")
+                        }
+                    }
+                }
 
             // Check dimensions of data
             let dims: [usize; 2] = data
@@ -50,7 +59,11 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
                     let tree: Tree2 = Tree2Builder {
                         data,
                         tree_builder: |data: &Box<&[[NotNan<f64>; 2]]>| {
-                            FNNTWTree::<'_, 2>::new(**data, leafsize).unwrap()
+                            if let Some(psl) = par_split_level {
+                                FNNTWTree::<'_, 2>::new_parallel(**data, leafsize, psl).unwrap()
+                            } else {
+                                FNNTWTree::<'_, 2>::new(**data, leafsize).unwrap()
+                            }
                         },
                     }.build();
             
@@ -67,8 +80,11 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
                     let tree: Tree3 = Tree3Builder {
                         data,
                         tree_builder: |data: &Box<&[[NotNan<f64>; 3]]>| {
-                            let t = FNNTWTree::<'_, 3>::new(data, leafsize).unwrap();
-                            t
+                            if let Some(psl) = par_split_level {
+                                FNNTWTree::<'_, 3>::new_parallel(**data, leafsize, psl).unwrap()
+                            } else {
+                                FNNTWTree::<'_, 3>::new(**data, leafsize).unwrap()
+                            }
                         },
                     }.build();
             
