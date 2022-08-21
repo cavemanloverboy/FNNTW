@@ -6,7 +6,7 @@ use ouroboros::*;
 use numpy::ndarray::{Axis, Array1, ArrayView2};
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
 use rayon::prelude::{ParallelBridge, ParallelIterator};
-use rayon::{prelude::*, ThreadPoolBuildError};
+use rayon::prelude::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -49,20 +49,20 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             match dims[1] {
                 2 => {
 
-                    let data: Box<&[[NotNan<f64>; 2]]> = Box::new(unsafe {
+                    let data: &[[NotNan<f64>; 2]] = unsafe {
                         std::mem::transmute(slice_as_chunks::<f64, 2>(data
                             .as_array()
                             .as_slice()
                             .unwrap()
-                        ))});
+                        ))};
 
                     let tree: Tree2 = Tree2Builder {
                         data,
-                        tree_builder: |data: &Box<&[[NotNan<f64>; 2]]>| {
+                        tree_builder: |data: &&[[NotNan<f64>; 2]]| {
                             if let Some(psl) = par_split_level {
-                                FNNTWTree::<'_, 2>::new_parallel(**data, leafsize, psl).unwrap()
+                                FNNTWTree::<'_, 2>::new_parallel(*data, leafsize, psl).unwrap()
                             } else {
-                                FNNTWTree::<'_, 2>::new(**data, leafsize).unwrap()
+                                FNNTWTree::<'_, 2>::new(data, leafsize).unwrap()
                             }
                         },
                     }.build();
@@ -70,20 +70,20 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
                     Ok(Tree(Box::new(tree)))
                 },
                 3 => {
-                    let data: Box<&[[NotNan<f64>; 3]]> = Box::new(unsafe {
+                    let data: &[[NotNan<f64>; 3]] = unsafe {
                         std::mem::transmute(slice_as_chunks::<f64, 3>(data
                             .as_array()
                             .as_slice()
                             .unwrap()
-                        ))});
+                        ))};
 
                     let tree: Tree3 = Tree3Builder {
                         data,
-                        tree_builder: |data: &Box<&[[NotNan<f64>; 3]]>| {
+                        tree_builder: |data: &&[[NotNan<f64>; 3]]| {
                             if let Some(psl) = par_split_level {
-                                FNNTWTree::<'_, 3>::new_parallel(**data, leafsize, psl).unwrap()
+                                FNNTWTree::<'_, 3>::new_parallel(*data, leafsize, psl).unwrap()
                             } else {
-                                FNNTWTree::<'_, 3>::new(**data, leafsize).unwrap()
+                                FNNTWTree::<'_, 3>::new(*data, leafsize).unwrap()
                             }
                         },
                     }.build();
@@ -94,9 +94,9 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             }
         }
 
-        fn query<'py,'d>(
-            slf: PyRef<'d, Self>,
-            query: PyReadonlyArray2<'py, f64>
+        fn query(
+            slf: PyRef<'_, Self>,
+            query: PyReadonlyArray2<'_, f64>
         ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
             let (distances, indices) = slf.0.query(query.as_array())?;
             let distances = Array1::from_vec(distances);
@@ -114,7 +114,7 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
 #[self_referencing]
 struct Tree2<'a> {
     // data: Array1<[NotNan<f64>; 2]>,
-    data: Box<&'a[[NotNan<f64>; 2]]>,
+    data: &'a[[NotNan<f64>; 2]],
     #[borrows(data)]
     #[covariant]
     pub tree: FNNTWTree<'this, 2>
@@ -123,8 +123,7 @@ struct Tree2<'a> {
 // #[pyclass]
 #[self_referencing]
 struct Tree3<'a> {
-    // data: Array1<[NotNan<f64>; 3]>,
-    data: Box<&'a[[NotNan<f64>; 3]]>,
+    data: &'a[[NotNan<f64>; 3]],
     #[borrows(data)]
     #[covariant]
     pub tree: FNNTWTree<'this, 3>
