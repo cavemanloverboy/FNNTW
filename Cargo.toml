@@ -7,6 +7,12 @@ repository = "https://github.com/cavemanloverboy/fnstw"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "./",
+    "pyfnntw",
+]
+
 [features]
 default = []
 timing = []
