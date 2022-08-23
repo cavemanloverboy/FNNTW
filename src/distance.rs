@@ -1,5 +1,7 @@
 use ordered_float::NotNan;
 
+use crate::query_k::container::Container;
+
 #[inline(always)]
 pub fn squared_euclidean<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f64>; D]) -> f64 {
     // Initialize accumulator var
@@ -53,6 +55,32 @@ where
         false
     }
 }
+
+#[inline(always)]
+pub(crate) fn new_best_kth<'t, 'i, 'o, const D: usize>(
+    query: &[NotNan<f64>; D],
+    candidate: &'i [NotNan<f64>; D],
+    container: &'o mut Container<'i, D>,
+) -> bool
+where
+    'i: 'o,
+    't: 'i
+{
+
+    // Run usual squared_euclidean fn
+    let dist_sq: f64 = squared_euclidean(query, candidate);
+
+    // Compare squared dist
+    let new_best = dist_sq < *container.best_dist2();
+    if new_best {
+        container.push((dist_sq, candidate));
+        true
+    } else {
+        false
+    }
+}
+
+
 
 /// Calculate the distance from `query` to some space defined by `lower` and `upper`.
 ///
