@@ -2,11 +2,13 @@ use crate::{distance::*, Node, Tree};
 use ordered_float::NotNan;
 
 impl<'t, const D: usize> Tree<'t, D> {
+
     /// Given a query point `query`, query the tree and return point's nearest neighbor.
     /// The value returned is (`distance_to_neighbor: f64`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<f64>; D]`).
     pub fn query_nearest(&'t self, query: &[NotNan<f64>; D]) -> (f64, u64, &'t [NotNan<f64>; D]) {
-        // Initialize a reference to the root node
-        let current_node: &Node<'t, D> = unsafe { self.nodes.last().unwrap_unchecked() };
+
+        // Get reference to the root node
+        let current_node: &Node<'t, D> = &self.root_node;
 
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
         // and distance to their associated space in form of (&usize, f64), where usize is
@@ -17,8 +19,8 @@ impl<'t, const D: usize> Tree<'t, D> {
             Vec::with_capacity(self.height_hint);
 
         let mut current_best_dist_sq = std::f64::MAX;
-        let mut current_best_neighbor: &'t [NotNan<f64>; D] =
-            unsafe { self.nodes.last().unwrap_unchecked().stem_position() };
+        let mut current_best_neighbor: &'t [NotNan<f64>; D] = current_node
+            .stem_position();
 
         // Recurse down (and then up and down) the stem
         self.check_stem(
@@ -32,6 +34,101 @@ impl<'t, const D: usize> Tree<'t, D> {
         let best_idx = self.data_index[current_best_neighbor];
 
         (current_best_dist_sq, best_idx, current_best_neighbor)
+    }
+
+    pub fn query_nearest_periodic(
+        &'t self,
+        query: &[NotNan<f64>; D],
+        boxsize: &[NotNan<f64>; D],
+    ) -> (f64, u64, &'t [NotNan<f64>; D]) {
+
+        // First get real image result
+        let (mut best_dist2, mut best_idx, mut best_nn) = self.query_nearest(query);
+
+        // Find closest dist2 to every side
+        let mut closest_side_dist2 = [0.0_f64; D];
+        for side in 0..D {
+
+            // Do a single index here. This is equal to distance to lower side
+            let query_component = unsafe { query.get_unchecked(side) };
+
+            // Get distance to upper half
+            let upper = unsafe { boxsize.get_unchecked(side) } - query_component;
+
+            // !negative includes zero
+            debug_assert!(!upper.is_sign_negative()); 
+            debug_assert!(!query_component.is_sign_negative());
+
+            // Choose lesser of two and then square
+            closest_side_dist2[side] = upper.min(*query_component).powi(2);
+        }
+
+        // Find which images we need to check.
+        // Initialize vector with real image (which we will remove later)
+        let mut images_to_check = Vec::with_capacity(2_usize.pow(D as u32)-1);
+        for image in 1..2_usize.pow(D as u32) {
+            
+            // Closest image in the form of bool array
+            let closest_image = (0..D)
+                .map(|idx| ((image / 2_usize.pow(idx as u32)) % 2) == 1);
+
+            // Find distance to corresponding side, edge, vertex or other higher dimensional equivalent
+            let dist_to_side_edge_or_other: f64 = closest_image
+                .clone()
+                .enumerate()
+                .flat_map(|(side, flag)| if flag {
+                    
+                    // Get minimum of dist2 to lower and upper side
+                    Some( unsafe { closest_side_dist2.get_unchecked(side) } )
+                } else { None })
+                .fold(0.0, |acc, x| acc + x);
+
+            if dist_to_side_edge_or_other < best_dist2 {
+
+                let mut image_to_check = query.clone();
+                
+                for (idx, flag) in closest_image.enumerate() {
+
+                    // If moving image along this dimension
+                    if flag {
+
+                        // Do a single index here. This is equal to distance to lower side
+                        let query_component: &NotNan<f64> =  unsafe { query.get_unchecked(idx) };
+
+                        // Single index here as well
+                        let boxsize_component = unsafe { boxsize.get_unchecked(idx) };
+
+                        unsafe {
+                            if *query_component < boxsize_component / 2.0 {
+                                // Add if in lower half of box
+                                *image_to_check.get_unchecked_mut(idx) = query_component + boxsize_component
+                            } else {
+                                // Subtract if in upper half of box
+                                *image_to_check.get_unchecked_mut(idx) = query_component - boxsize_component
+                            }
+                        }
+                        
+                    }
+                }
+
+                images_to_check.push(image_to_check);
+            }
+        }
+
+        // Then check all images we need to check
+        for image in &images_to_check {
+
+            // Get image result
+            let (image_best_dist2, image_best_idx, image_nn) = self.query_nearest(image);
+
+            if image_best_dist2 < best_dist2 {
+                best_dist2 = image_best_dist2;
+                best_idx = image_best_idx;
+                best_nn = image_nn;
+            }
+        }
+
+        (best_dist2, best_idx, best_nn)
     }
 
     #[inline(always)]
@@ -203,4 +300,21 @@ impl<'t, const D: usize> Tree<'t, D> {
             current_best_neighbor,
         );
     }
+
+    // fn check_point(&self, boxsize: &[NotNan<f64>; D]) -> Result<()> {
+
+    //     // Initialize flag
+    //     let mut okay = true;
+    
+    //     for length in boxsize {
+    //         if !(length.is_sign_positive() && length.is_normal()) {
+    //             okay = false; 
+    //         } else  {
+
+    //         }
+
+    //     }
+    
+    //     okay
+    // }
 }
