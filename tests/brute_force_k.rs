@@ -6,9 +6,10 @@ use rand::{rngs::ThreadRng, Rng};
 const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
 const D: usize = 3;
+const K: usize = 4;
 
 #[test]
-fn test_brute_force() {
+fn test_brute_force_k() {
 
     // Random number generator
     let mut rng = rand::thread_rng();
@@ -29,12 +30,16 @@ fn test_brute_force() {
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
     for q in &query {
-        results.push(tree.query_nearest(q));
+        results.push(tree.query_nearest_k(q, K));
     }
 
     // Brute force check results
     for (i, q) in query.iter().enumerate() {
-        assert_eq!(results[i], brute_force(q, &data))
+        let result = &results[i];
+        let expected = brute_force_k(q, &data, K);
+        assert_eq!(result.len(), K);
+        assert_eq!(expected.len(), K);
+        assert_eq!(*result, expected);
     }
 
 }
@@ -45,22 +50,22 @@ fn random_point<const D: usize>(rng: &mut ThreadRng) -> [NotNan<f64>; D] {
 }
 
 
-fn brute_force<'d, const D: usize>(
+fn brute_force_k<'d, const D: usize>(
     q: &[NotNan<f64>; D],
     data: &'d [[NotNan<f64>; D]],
-) -> (f64, u64, &'d[NotNan<f64>; D]) {
+    k: usize,
+) -> Vec<(f64, u64, &'d[NotNan<f64>; D])> {
 
-    let mut best_dist = std::f64::MAX;
-    let mut best = (std::f64::MAX, std::u64::MAX, data.get(0).unwrap());
+    let mut all = Vec::with_capacity(data.len());
+
     for (d, i) in data.iter().zip(0..) {
         
         let dist = squared_euclidean(q, d);
-
-        if dist < best_dist {
-            best_dist = dist;
-            best = (best_dist, i, d)
-        }
+        all.push((dist, i, d))
     }
 
-    best
+    // this is safe so long as [0, 1] randoms are used
+    all.sort_by(|p1, p2| p1.0.partial_cmp(&p2.0).unwrap());
+    all.truncate(k);
+    all
 }
