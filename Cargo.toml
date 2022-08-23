@@ -14,9 +14,11 @@ members = [
 ]
 
 [features]
-default = []
+default = ["binary-heap-container"]
 timing = []
 single_ref = []
+binary-heap-container = []
+vec-container = []
 
 [dependencies]
 ordered-float = "3.0.0"
@@ -57,6 +59,10 @@ harness = false
 
 [[bench]]
 name = "query"
+harness = false
+
+[[bench]]
+name = "query_k"
 harness = false
 
 
