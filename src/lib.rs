@@ -14,6 +14,7 @@ use num_format::{Locale, ToFormattedString};
 
 pub mod distance;
 pub mod query;
+pub mod query_k;
 
 // mod medians;
 #[cfg(feature = "timing")]
@@ -46,11 +47,14 @@ pub struct Tree<'t, const D: usize> {
     #[allow(unused)]
     pub leafsize: usize,
 
-    // Container of all nodes (stems, leaves), in the tree
+    // Container of all nodes (stems, leaves), in the tree, except the root node.
     pub nodes: Vec<Node<'t, D>>,
 
     // Approximate height (used for determining some allocation sizes)
     pub height_hint: usize,
+
+    // Root node
+    root_node: Node<'t, D>,
 }
 
 #[derive(Debug)]
@@ -235,11 +239,16 @@ impl<'t, const D: usize> Tree<'t, D> {
                 println!("TOTAL = {}\n", total_str);
             }
 
+            // Unwrap the Arc
+            let mut nodes = Arc::try_unwrap(nodes).unwrap().into_inner().unwrap();
+            let root_node = nodes.pop().expect("root node should exist");
+
             Ok(Tree {
                 data_index: data_idx_handle.join().unwrap(),
                 leafsize,
-                nodes: Arc::try_unwrap(nodes).unwrap().into_inner().unwrap(),
+                nodes,
                 height_hint,
+                root_node,
             })
         })
     }
@@ -554,11 +563,14 @@ impl<'t, const D: usize> Tree<'t, D> {
                 println!("TOTAL = {}\n", total_str);
             }
 
+            let root_node: Node<D> = nodes.pop().expect("root node should exist");
+
             Ok(Tree {
                 data_index: data_idx_handle.join().unwrap(),
                 leafsize,
                 nodes,
                 height_hint,
+                root_node
             })
         })
     }
@@ -726,8 +738,10 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
     }
 
+    // Returns the number of nodes in the tree
+    // The root node is contained in the struct, so must add one.
     pub fn size(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() + 1
     }
 }
 
