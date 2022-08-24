@@ -1,33 +1,32 @@
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::HashMap;
+#[cfg(not(any(feature = "vec-container")))]
+use std::collections::BinaryHeap;
 
 use ordered_float::NotNan;
 
 #[repr(transparent)]
 #[derive(Debug)]
+/// Using this struct to impl PartialOrd for f64.
 pub(crate) struct Candidate<'t, const D: usize>((f64, &'t[NotNan<f64>; D]));
 
-#[cfg(feature = "binary-heap-container")]
+#[cfg(not(any(feature = "vec-container")))]
 pub(crate) struct Container<'t, const D: usize> {
     items: BinaryHeap<Candidate<'t, D>>,
     k: usize,
 }
 
-#[cfg(feature = "vec-container")]
-pub(crate) struct Container<'t, const D: usize> {
-    items: Vec<Candidate<'t, D>>,
-    k: usize,
-}
 
-#[cfg(feature = "binary-heap-container")]
 impl<'t, const D: usize> Container<'t,D> {
+    #[cfg(not(any(feature = "vec-container")))]
     pub(super) fn new(k: usize) -> Self {
         Container {
-            items: BinaryHeap::new(),
+            items: BinaryHeap::with_capacity(k),
             k,
         }
     }
 
     // Euclidean needs access to this one
+    #[cfg(not(any(feature = "vec-container")))]
     pub(crate) fn push(&mut self, neighbor: (f64, &'t [NotNan<f64>; D])) {
         if self.items.len() >= self.k {
 
@@ -42,10 +41,12 @@ impl<'t, const D: usize> Container<'t,D> {
     }
 
     // Euclidean needs access to this one
+    #[cfg(not(any(feature = "vec-container")))]
     pub(crate) fn best_dist2(&self) -> &f64 {
         &self.items.peek().unwrap().0.0
     }
 
+    #[cfg(not(any(feature = "vec-container")))]
     pub(super) fn index<'i>(
         self,
         data_index: &HashMap<&'t [NotNan<f64>; D], u64>
@@ -65,33 +66,60 @@ impl<'t, const D: usize> Container<'t,D> {
 }
 
 #[cfg(feature = "vec-container")]
+pub(crate) struct Container<'t, const D: usize> {
+    items: Vec<Candidate<'t, D>>,
+    largest_dist2: f64,
+    k: usize,
+}
+
 impl<'t, const D: usize> Container<'t,D> {
+    #[cfg(feature = "vec-container")]
     pub(super) fn new(k: usize) -> Self {
         Container {
-            items: BinaryHeap::new(),
+            items: Vec::with_capacity(k),
+            largest_dist2: std::f64::MAX,
             k,
         }
     }
 
     // Euclidean needs access to this one
+    #[cfg(feature = "vec-container")]
     pub(crate) fn push(&mut self, neighbor: (f64, &'t [NotNan<f64>; D])) {
         if self.items.len() >= self.k {
 
             // If >=k elements, eject largest
+            let mut second_largest = std::f64::MIN;
+            self.items.retain(|x| {
+                if x.0.0 < self.largest_dist2 && x.0.0 > second_largest {
+                    second_largest = x.0.0;
+                }
+                self.largest_dist2 != x.0.0
+            });
+
+            // Update largest_dist2
+            // 1) In the case of one element, the new element is selected since
+            //    second_largest will be std::f64::MIN
+            // 2) In the case of >1 elements, the largest of the new element and
+            //    second largest is chosen.
+            self.largest_dist2 = neighbor.0.max(second_largest);
+
+            // Add neighbor
             let neighbor: Candidate<D> = unsafe { std::mem::transmute(neighbor) };
-            *self.items.peek_mut().unwrap() = neighbor;
+            self.items.push(neighbor);
         } else {
 
-            // If less than k elements, add element.
+            // If less than k elements, just add element.
             self.items.push( unsafe { std::mem::transmute(neighbor) });
         }
     }
 
     // Euclidean needs access to this one
+    #[cfg(feature = "vec-container")]
     pub(crate) fn best_dist2(&self) -> &f64 {
-        &self.items.peek().unwrap().0.0
+        &self.largest_dist2
     }
 
+    #[cfg(feature = "vec-container")]
     pub(super) fn index<'i>(
         self,
         data_index: &HashMap<&'t [NotNan<f64>; D], u64>

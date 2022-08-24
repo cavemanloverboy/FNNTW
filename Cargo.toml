@@ -14,10 +14,9 @@ members = [
 ]
 
 [features]
-default = ["binary-heap-container"]
+default = []
 timing = []
 single_ref = []
-binary-heap-container = []
 vec-container = []
 
 [dependencies]
