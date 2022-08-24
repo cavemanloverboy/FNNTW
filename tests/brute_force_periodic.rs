@@ -1,4 +1,5 @@
-use fnntw::{Tree, NotNan, distance::squared_euclidean};
+use fnntw::{Tree, distance::squared_euclidean};
+use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
 
 
@@ -6,7 +7,7 @@ use rand::{rngs::ThreadRng, Rng};
 const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
 const D: usize = 3;
-const BOXSIZE: [NotNan<f64>; D] = [ unsafe{ NotNan::new_unchecked(1.0) }; D];
+const BOXSIZE: [f64; D] = [1.0; D];
 
 #[test]
 fn test_brute_force_periodic() {
@@ -25,7 +26,7 @@ fn test_brute_force_periodic() {
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new(&data, 4).unwrap();
+    let tree = Tree::<'_, D>::new_parallel(&data, 4, 1).unwrap();
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
@@ -41,15 +42,19 @@ fn test_brute_force_periodic() {
 }
 
 
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [NotNan<f64>; D] {
-    [(); D].map(|_| unsafe { std::mem::transmute::<f64, NotNan<f64>>(rng.gen()) })
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
+    [(); D].map(|_| rng.gen())
 }
 
 
 fn brute_force_periodic<'d, const D: usize>(
-    q: &[NotNan<f64>; D],
-    data: &'d [[NotNan<f64>; D]],
+    q: &[f64; D],
+    data: &'d [[f64; D]],
 ) -> (f64, u64, &'d[NotNan<f64>; D]) {
+
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
 
     let mut best_dist = std::f64::MAX;
     let mut best = (std::f64::MAX, std::u64::MAX, data.get(0).unwrap());
@@ -79,7 +84,7 @@ fn brute_force_periodic<'d, const D: usize>(
                     let boxsize_component = unsafe { BOXSIZE.get_unchecked(idx) };
 
                     unsafe {
-                        if *query_component < boxsize_component / 2.0 {
+                        if **query_component < boxsize_component / 2.0 {
                             // Add if in lower half of box
                             *image_to_check
                                 .get_unchecked_mut(idx) = query_component + boxsize_component

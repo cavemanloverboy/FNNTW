@@ -1,7 +1,6 @@
-use fnntw::{Tree, NotNan, distance::squared_euclidean};
+use fnntw::{Tree, distance::squared_euclidean};
+use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
-
-
 
 const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
@@ -25,7 +24,7 @@ fn test_brute_force_k() {
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new(&data, 32).unwrap();
+    let tree = Tree::<'_, D>::new_parallel(&data, 32, 1).unwrap();
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
@@ -40,27 +39,32 @@ fn test_brute_force_k() {
         assert_eq!(result.len(), K);
         assert_eq!(expected.len(), K);
         assert_eq!(*result, expected);
+        assert_eq!(*result, expected);
+        assert_eq!(*result, expected);
     }
 
 }
 
 
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [NotNan<f64>; D] {
-    [(); D].map(|_| unsafe { std::mem::transmute::<f64, NotNan<f64>>(rng.gen()) })
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
+    [(); D].map(|_|rng.gen() )
 }
 
 
 fn brute_force_k<'d, const D: usize>(
-    q: &[NotNan<f64>; D],
-    data: &'d [[NotNan<f64>; D]],
+    q: &[f64; D],
+    data: &'d [[f64; D]],
     k: usize,
 ) -> Vec<(f64, u64, &'d[NotNan<f64>; D])> {
 
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
+
     let mut all = Vec::with_capacity(data.len());
 
-    for (d, i) in data.iter().zip(0..) {
-        
-        let dist = squared_euclidean(q, d);
+    for (d, i) in data.iter().zip(0_u64..) {
+        let dist = squared_euclidean::<D>(q, d);
         all.push((dist, i, d))
     }
 

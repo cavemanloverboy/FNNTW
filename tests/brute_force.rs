@@ -1,4 +1,5 @@
-use fnntw::{Tree, NotNan, distance::squared_euclidean};
+use fnntw::{Tree, distance::squared_euclidean};
+use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
 
 
@@ -40,15 +41,19 @@ fn test_brute_force() {
 }
 
 
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [NotNan<f64>; D] {
-    [(); D].map(|_| unsafe { std::mem::transmute::<f64, NotNan<f64>>(rng.gen()) })
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
+    [(); D].map(|_| rng.gen())
 }
 
 
 fn brute_force<'d, const D: usize>(
-    q: &[NotNan<f64>; D],
-    data: &'d [[NotNan<f64>; D]],
+    q: &[f64; D],
+    data: &'d [[f64; D]],
 ) -> (f64, u64, &'d[NotNan<f64>; D]) {
+
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
 
     let mut best_dist = std::f64::MAX;
     let mut best = (std::f64::MAX, std::u64::MAX, data.get(0).unwrap());

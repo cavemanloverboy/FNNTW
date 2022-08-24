@@ -1,11 +1,12 @@
-use fnntw::{Tree, NotNan, distance::squared_euclidean};
+use fnntw::{Tree, distance::squared_euclidean};
+use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
 
 
 
 const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
-const BOXSIZE: [NotNan<f64>; 3] = [ unsafe{ NotNan::new_unchecked(1.0) }; 3];
+const BOXSIZE: [f64; 3] = [1.0; 3];
 const D: usize = 3;
 const K: usize = 80;
 
@@ -26,7 +27,7 @@ fn test_brute_force_periodic_k() {
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new(&data, 32).unwrap();
+    let tree = Tree::<'_, D>::new_parallel(&data, 32, 1).unwrap();
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
@@ -46,16 +47,20 @@ fn test_brute_force_periodic_k() {
 }
 
 
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [NotNan<f64>; D] {
-    [(); D].map(|_| unsafe { std::mem::transmute::<f64, NotNan<f64>>(rng.gen()) })
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
+    [(); D].map(|_| rng.gen())
 }
 
 
 fn brute_force_periodic_k<'d, const D: usize>(
-    q: &[NotNan<f64>; D],
-    data: &'d [[NotNan<f64>; D]],
+    q: &[f64; D],
+    data: &'d [[f64; D]],
     k: usize,
 ) -> Vec<(f64, u64, &'d[NotNan<f64>; D])> {
+
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
 
     // Costly...
     let mut all = Vec::with_capacity(data.len() * 2_usize.pow(D as u32));
@@ -85,7 +90,7 @@ fn brute_force_periodic_k<'d, const D: usize>(
                     let boxsize_component = unsafe { BOXSIZE.get_unchecked(idx) };
 
                     unsafe {
-                        if *query_component < boxsize_component / 2.0 {
+                        if **query_component < boxsize_component / 2.0 {
                             // Add if in lower half of box
                             *image_to_check.get_unchecked_mut(idx) = query_component + boxsize_component
                         } else {
