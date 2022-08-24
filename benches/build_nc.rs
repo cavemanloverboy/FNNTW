@@ -1,5 +1,4 @@
 use fnntw::Tree;
-use ordered_float::NotNan;
 
 use num_format::{Locale, ToFormattedString};
 use std::time::Instant;
@@ -14,8 +13,8 @@ fn tree_build_bench() {
     for _ in 0..RUNS {
         // Bench building tree
         for ndata in [5].map(|p| 10_usize.pow(p)) {
-            let data: Vec<[NotNan<f64>; D]> = (0..ndata)
-                .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+            let data: Vec<[f64; D]> = (0..ndata)
+                .map(|_| [(); D].map(|_| rand::random()))
                 .collect();
 
             let time = Instant::now();

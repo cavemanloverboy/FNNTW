@@ -1,5 +1,4 @@
 use fnntw::Tree;
-use ordered_float::NotNan;
 use rayon::prelude::*;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -7,16 +6,16 @@ use num_format::{Locale, ToFormattedString};
 
 const D: usize = 3;
 const QUERY: usize = 1_000_000;
-const BOXSIZE: [NotNan<f64>; D] = unsafe { [NotNan::new_unchecked(1.0); D] };
+const BOXSIZE: [f64; D] = [1.0; D];
 const NDATA: usize = 100_000;
 
 fn criterion_benchmark(c: &mut Criterion) {
 
-    let data: Vec<[NotNan<f64>; D]> = (0..NDATA)
-        .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+    let data: Vec<[f64; D]> = (0..NDATA)
+        .map(|_| [(); D].map(|_| rand::random()))
         .collect();
-    let query: Vec<[NotNan<f64>; D]> = (0..QUERY)
-        .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+    let query: Vec<[f64; D]> = (0..QUERY)
+        .map(|_| [(); D].map(|_| rand::random()))
         .collect();
 
     let mut group = c.benchmark_group(

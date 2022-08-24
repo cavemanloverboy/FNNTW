@@ -11,10 +11,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     const D: usize = 3;
 
     let aa: Vec<[NotNan<f64>; D]> = [(); NDATA]
-        .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+        .map(|_| [(); D].map(|_| NotNan::new(rand::random()).unwrap()))
         .to_vec();
     let bb: Vec<[NotNan<f64>; D]> = [(); NDATA]
-        .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+        .map(|_| [(); D].map(|_| NotNan::new(rand::random()).unwrap()))
         .to_vec();
 
     group.bench_function("squared_euclidean 3D", |b| {

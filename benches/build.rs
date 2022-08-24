@@ -9,8 +9,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     // Bench building tree
     for ndata in [3, 4, 5, 6].map(|p| 10_usize.pow(p)) {
-        let data: Vec<[NotNan<f64>; D]> = (0..ndata)
-            .map(|_| [(); D].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+        let data: Vec<[f64; D]> = (0..ndata)
+            .map(|_| [(); D].map(|_| rand::random()))
             .collect();
 
         c.bench_function(
