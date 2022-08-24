@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-pub use ordered_float::NotNan;
+use ordered_float::NotNan;
 
 #[cfg(feature = "timing")]
 use std::sync::atomic::Ordering;
@@ -15,6 +15,9 @@ use num_format::{Locale, ToFormattedString};
 pub mod distance;
 pub mod query;
 pub mod query_k;
+mod utils;
+
+use utils::*;
 
 // mod medians;
 #[cfg(feature = "timing")]
@@ -39,8 +42,13 @@ const IS_RIGHT: bool = false;
 /// This [`Tree`] struct is the core struct that holds all nodes in the kdtree.
 /// It also contains the hashmap that is used to index the data.
 pub struct Tree<'t, const D: usize> {
-    // Data in the tree
-    // data: &'t [([NotNan<f64>; D])],
+
+    /// Data in the tree. Here for user reference mainly. For example,
+    /// to inspect the data that was used to build the tree.
+    #[allow(unused)]
+    input: &'t [[f64; D]],
+
+    // O(1) lookup table for index of point
     pub data_index: HashMap<&'t [NotNan<f64>; D], u64>,
 
     // Unused, but here for future/user reference
@@ -133,28 +141,27 @@ impl<'t, const D: usize> Tree<'t, D> {
     /// `par_split_level` specified the depth (during the build) at which the
     /// parallelism begins.
     pub fn new_parallel(
-        data: &'t [[NotNan<f64>; D]],
+        input: &'t [[f64; D]],
         leafsize: usize,
         par_split_level: usize,
-    ) -> Result<Tree<'t, D>, &'static str> {
-        // Nonzero Length
-        let data_len = data.len();
-        if data_len == 0 {
-            return Err("data has zero length");
-        }
+    ) -> FnntwResult<Tree<'t, D>> {
+
+        // Perform checks for valid data
+        let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
         // This is used to determine the size several allocations
         //
         // TODO: There exists a way to get the exact height during build,
         // but that will require a refactor that I don't want to do just yet
         // and i'm not convinced it will be that big of a performance boost
+        let data_len = input.len();
         let height_hint = ilog2(data_len);
 
         // Unsafe operations require some min leafsize
         // Also probably a good idea to keep above 4 anyway.
-        if leafsize < 4 {
-            return Err("Choose a leafsize >= 4");
-        }
+        // if leafsize < 4 {
+        //     return Err("Choose a leafsize >= 4");
+        // }
 
         // Initialize variables for recursive function
         let split_level: usize = 0;
@@ -244,6 +251,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             let root_node = nodes.pop().expect("root node should exist");
 
             Ok(Tree {
+                input,
                 data_index: data_idx_handle.join().unwrap(),
                 leafsize,
                 nodes,
@@ -322,22 +330,9 @@ impl<'t, const D: usize> Tree<'t, D> {
 
         match is_leaf {
             true => {
+
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
-                // let mut lower = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MAX) });
-                // let mut upper = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MIN) });
-                // for i in 0..D {
-                //     for p in 0..subset.len() {
-                //         unsafe {
-
-                //             // get mut refs
-                //             let lower_i = lower.get_unchecked_mut(i);
-                //             let upper_i = upper.get_unchecked_mut(i);
-                //             *lower_i = *(&*lower_i).min(subset.get_unchecked(p).get_unchecked(i));
-                //             *upper_i = *(&*upper_i).max(subset.get_unchecked(p).get_unchecked(i));
-                //         }
-                //     }
-                // }
                 let leaf = Node::Leaf {
                     points: subset.to_vec(),
                     lower,
@@ -382,6 +377,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                 let mut right_idx = 0;
                 if split_level == par_split_level && par_split_level > 0 {
                     std::thread::scope(|s| {
+
                         // We are at the level over which user has specified
                         // we should parallelize the build. Handle in scoped threads
                         let left_arc = Arc::clone(&nodes);
@@ -461,25 +457,21 @@ impl<'t, const D: usize> Tree<'t, D> {
     }
 
     /// Create a new FNSTW kdTree [Tree] using a nonparallel build.
-    pub fn new(data: &'t [[NotNan<f64>; D]], leafsize: usize) -> Result<Tree<'t, D>, &'static str> {
-        // Nonzero Length
-        let data_len = data.len();
-        if data_len == 0 {
-            return Err("data has zero length");
-        }
+    pub fn new(
+        input: &'t [[f64; D]],
+        leafsize: usize,
+    ) -> FnntwResult<Tree<'t, D>> {
+        
+        // Perform checks for valid data
+        let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
         // This is used to determine the size several allocations
         //
         // TODO: There exists a way to get the exact height during build,
         // but that will require a refactor that I don't want to do just yet
         // and i'm not convinced it will be that big of a performance boost
+        let data_len = input.len();
         let height_hint = ilog2(data_len);
-
-        // Unsafe operations require some min leafsize
-        // Also probably a good idea to keep above 4 anyway.
-        if leafsize < 4 {
-            return Err("Choose a leafsize >= 4");
-        }
 
         // Initialize variables for recursive function
         let split_level: usize = 0;
@@ -566,6 +558,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             let root_node: Node<D> = nodes.pop().expect("root node should exist");
 
             Ok(Tree {
+                input,
                 data_index: data_idx_handle.join().unwrap(),
                 leafsize,
                 nodes,
@@ -762,7 +755,7 @@ mod tests {
                     let leafsize = 16;
 
                     let data: Vec<_> = (0..leafsize)
-                        .map(|x| [NotNan::new(x as f64).unwrap(); $d])
+                        .map(|x| [x as f64; $d])
                         .collect();
 
                     let tree = Tree::new(&data, leafsize).unwrap();
@@ -779,15 +772,15 @@ mod tests {
 
     #[test]
     fn test_make_1dtree_with_size_three() {
-        let data: Vec<[NotNan<f64>; 1]> = [
+        let data: Vec<[f64; 1]> = [
             [(); 32]
-                .map(|_| unsafe { [NotNan::new_unchecked(0.1)] })
+                .map(|_| [0.1_f64])
                 .as_ref(),
             [(); 1]
-                .map(|_| unsafe { [NotNan::new_unchecked(0.5)] })
+                .map(|_| [0.5_f64])
                 .as_ref(),
             [(); 32]
-                .map(|_| unsafe { [NotNan::new_unchecked(0.9)] })
+                .map(|_| [0.9_f64])
                 .as_ref(),
         ]
         .concat();

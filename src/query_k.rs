@@ -8,12 +8,15 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     pub fn query_nearest_k<'q>(
         &'q self,
-        query: &'q [NotNan<f64>; D],
+        query: &'q [f64; D],
         k: usize,
     ) -> Vec<(f64, u64, &'q [NotNan<f64>; D])>
     where
         't: 'q,
     {
+
+        // TODO: check query
+        let query: &[NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
 
         // Get reference to the root node
         let current_node: &Node<'t, D> = &self.root_node;
@@ -44,14 +47,19 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     pub fn query_nearest_k_periodic<'q, 'i>(
         &'q self,
-        query: &'q [NotNan<f64>; D],
+        query: &'q [f64; D],
         k: usize,
-        boxsize: &[NotNan<f64>; D],
+        boxsize: &[f64; D],
     ) -> Vec<(f64, u64, &'i [NotNan<f64>; D])>
     where
         'q: 'i,
         't: 'q,
     {
+
+        // TODO: check query, boxsize
+        let query: &'q [NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
+        let boxsize: &[NotNan<f64>; D] = unsafe { std::mem::transmute(boxsize) };
+
         // First get real image result
         let mut real_image_container: Container<D> = {
 

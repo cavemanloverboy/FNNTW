@@ -5,7 +5,10 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     /// Given a query point `query`, query the tree and return point's nearest neighbor.
     /// The value returned is (`distance_to_neighbor: f64`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<f64>; D]`).
-    pub fn query_nearest(&'t self, query: &[NotNan<f64>; D]) -> (f64, u64, &'t [NotNan<f64>; D]) {
+    pub fn query_nearest(&'t self, query: &[f64; D]) -> (f64, u64, &'t [NotNan<f64>; D]) {
+
+        // TODO: check query
+        let query: &[NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
 
         // Get reference to the root node
         let current_node: &Node<'t, D> = &self.root_node;
@@ -38,12 +41,17 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     pub fn query_nearest_periodic(
         &'t self,
-        query: &[NotNan<f64>; D],
-        boxsize: &[NotNan<f64>; D],
+        query: &[f64; D],
+        boxsize: &[f64; D],
     ) -> (f64, u64, &'t [NotNan<f64>; D]) {
 
         // First get real image result
         let (mut best_dist2, mut best_idx, mut best_nn) = self.query_nearest(query);
+
+        // Query point already passed checks in query_nearest
+        // TODO: only need to check boxsize
+        let query: &[NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
+        let boxsize: &[NotNan<f64>; D] = unsafe { std::mem::transmute(boxsize) };
 
         // Find closest dist2 to every side
         let mut closest_side_dist2 = [0.0_f64; D];
@@ -119,7 +127,13 @@ impl<'t, const D: usize> Tree<'t, D> {
         for image in &images_to_check {
 
             // Get image result
-            let (image_best_dist2, image_best_idx, image_nn) = self.query_nearest(image);
+            let (image_best_dist2, image_best_idx, image_nn) = self.query_nearest(
+
+                // safety, NotNan --> f64, the image will be checked by query_nearest
+                unsafe {
+                    std::mem::transmute(image)
+                }
+            );
 
             if image_best_dist2 < best_dist2 {
                 best_dist2 = image_best_dist2;
