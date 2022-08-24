@@ -7,7 +7,7 @@ const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
 const BOXSIZE: [NotNan<f64>; 3] = [ unsafe{ NotNan::new_unchecked(1.0) }; 3];
 const D: usize = 3;
-const K: usize = 4;
+const K: usize = 80;
 
 #[test]
 fn test_brute_force_periodic_k() {
