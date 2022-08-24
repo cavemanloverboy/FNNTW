@@ -17,6 +17,7 @@ assert data.shape == (DATA, DIMS), "incorrect data shape"
 assert query.shape == (QUERY, DIMS), "incorrect query shape"
 assert results.shape == (QUERY, K), "incorrect results shape"
 
+
 # Construct and query tree
 tree = Tree(data, leafsize=32)
 (expected, idxs) = tree.query(query, k=K, workers=-1)
@@ -30,7 +31,7 @@ if np.all(correct):
 else:
     num = np.invert(correct).sum()
     num1 = np.invert(correct1).sum()
-    print(f"Failure: {num:,}/{num:,} of {len(query):,}")
+    print(f"Failure: {num:,}/{num:,} of {len(query)*K:,}")
 
 # incorrect = []
 # for i in range(len(query)):

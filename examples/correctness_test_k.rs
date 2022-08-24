@@ -1,7 +1,7 @@
 use fnntw::Tree;
 use ndarray::Array2;
 use ndarray_npy::write_npy;
-use ordered_float::NotNan;
+use rand::{rngs::ThreadRng, Rng};
 use rayon::prelude::*;
 use std::error::Error;
 
@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     save_data_queries(&data, &queries)?;
 
     // Build tree
-    let leafsize = 4;
-    let tree = Tree::new_parallel(&data, leafsize, K)?;
+    let leafsize = 32;
+    let tree = Tree::new_parallel(&data, leafsize, 1).unwrap();
     println!("Built tree");
 
     // Query tree, in parallel
@@ -44,20 +44,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     println!("Queried");
 
-    save_results(sqdists, indices)
+    save_results(sqdists, indices)?;
+
+    drop(tree);
+    Ok(())
 }
 
-fn get_data() -> Vec<[NotNan<f64>; DIMS]> {
+#[inline]
+fn get_data() -> Vec<[f64; DIMS]> {
     gen_points::<NDATA>()
 }
 
-fn get_queries() -> Vec<[NotNan<f64>; DIMS]> {
+fn get_queries() -> Vec<[f64; DIMS]> {
     gen_points::<NQUERY>()
 }
 
-fn gen_points<const N: usize>() -> Vec<[NotNan<f64>; DIMS]> {
+#[inline]
+fn gen_points<const N: usize>() -> Vec<[f64; DIMS]> {
     (0..N)
-        .map(|_| [(); DIMS].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+        .map(|_| [(); DIMS].map(|_| rand::random()))
         .collect()
 }
 
@@ -68,11 +73,11 @@ fn save_results(sqdists: Array2<f64>, indices: Array2<u64>) -> Result<(), Box<dy
 }
 
 fn save_data_queries(
-    data: &Vec<[NotNan<f64>; DIMS]>,
-    queries: &Vec<[NotNan<f64>; DIMS]>,
+    data: &Vec<[f64; DIMS]>,
+    queries: &Vec<[f64; DIMS]>,
 ) -> Result<(), Box<dyn Error>> {
-    let flat_data: Vec<f64> = data.iter().flat_map(|p| p.map(|x| *x)).collect();
-    let flat_query: Vec<f64> = queries.iter().flat_map(|p| p.map(|x| *x)).collect();
+    let flat_data: Vec<f64> = data.iter().cloned().flatten().collect();
+    let flat_query: Vec<f64> = queries.iter().cloned().flatten().collect();
     write_npy(
         DATA_FILE,
         &ndarray::Array2::from_shape_vec((NDATA, DIMS), flat_data)?,
@@ -82,4 +87,10 @@ fn save_data_queries(
         &ndarray::Array2::from_shape_vec((NQUERY, DIMS), flat_query)?,
     )?;
     Ok(())
+}
+
+
+
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
+    [(); D].map(|_| rng.gen() )
 }

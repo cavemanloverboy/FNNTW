@@ -1,6 +1,5 @@
 use fnntw::Tree;
 use ndarray_npy::write_npy;
-use ordered_float::NotNan;
 use rayon::prelude::*;
 use std::error::Error;
 
@@ -27,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Build tree
     let leafsize = 4;
-    let tree = Tree::new_parallel(&data, leafsize, 3)?;
+    let tree = Tree::new_parallel(&data, leafsize, 3).unwrap();
     println!("Built tree");
 
     // Query tree, in parallel
@@ -45,17 +44,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     save_results(sqdists, indices)
 }
 
-fn get_data() -> Vec<[NotNan<f64>; DIMS]> {
+fn get_data() -> Vec<[f64; DIMS]> {
     gen_points::<NDATA>()
 }
 
-fn get_queries() -> Vec<[NotNan<f64>; DIMS]> {
+fn get_queries() -> Vec<[f64; DIMS]> {
     gen_points::<NQUERY>()
 }
 
-fn gen_points<const N: usize>() -> Vec<[NotNan<f64>; DIMS]> {
+fn gen_points<const N: usize>() -> Vec<[f64; DIMS]> {
     (0..N)
-        .map(|_| [(); DIMS].map(|_| unsafe { NotNan::new_unchecked(rand::random()) }))
+        .map(|_| [(); DIMS].map(|_| rand::random()))
         .collect()
 }
 
@@ -66,11 +65,11 @@ fn save_results(sqdists: Vec<f64>, indices: Vec<u64>) -> Result<(), Box<dyn Erro
 }
 
 fn save_data_queries(
-    data: &Vec<[NotNan<f64>; DIMS]>,
-    queries: &Vec<[NotNan<f64>; DIMS]>,
+    data: &Vec<[f64; DIMS]>,
+    queries: &Vec<[f64; DIMS]>,
 ) -> Result<(), Box<dyn Error>> {
-    let flat_data: Vec<f64> = data.iter().flat_map(|p| p.map(|x| *x)).collect();
-    let flat_query: Vec<f64> = queries.iter().flat_map(|p| p.map(|x| *x)).collect();
+    let flat_data: Vec<f64> = data.iter().cloned().flatten().collect();
+    let flat_query: Vec<f64> = queries.iter().cloned().flatten().collect();
     write_npy(
         DATA_FILE,
         &ndarray::Array2::from_shape_vec((NDATA, DIMS), flat_data)?,
