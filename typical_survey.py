@@ -10,6 +10,7 @@ NRAND = 10**5
 NQUERY = 10**6
 RUNS = 100
 LS = 32
+K = 2**5
 
 # Generate data 
 DATA = np.random.uniform(size=(NRAND, 3))
@@ -34,14 +35,14 @@ for run in range(RUNS):
     # Query tree
     start = time()
     if USE_SCIPY:
-        dist, idx = kdtree.query(queries, workers=-1)        
+        dist, idx = kdtree.query(queries, k=K, workers=-1)        
     else:
-        dist, idx = kdtree.query(queries, sqr_dists=False)
+        dist, idx = kdtree.query(queries, k=K, sqr_dists=False)
     qt = (time() - start)*1000
     query_time += qt
     
     # Print run results
-    #print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
+    print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
 
 avg_build = build_time / RUNS
 avg_query = query_time / RUNS
