@@ -1,6 +1,5 @@
 use fnntw::Tree;
 use ndarray_npy::write_npy;
-use ordered_float::NotNan;
 use rayon::prelude::*;
 use std::error::Error;
 
@@ -16,10 +15,7 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(48)
-        .build_global()?;
-
+    
     // Gather data and query points
     let data = get_data();
     let queries = get_queries();
@@ -28,14 +24,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Build tree
     let leafsize = 4;
     println!("Built tree");
-    let tree = Tree::new_parallel(&data, leafsize, 3).unwrap();
+    let tree = Tree::new_parallel(&data, leafsize, 3)
+        .unwrap()
+        .with_boxsize(&[1.0; 3])
+        .unwrap();
     
     // Query tree, in parallel
     let (sqdists, indices): (Vec<f64>, Vec<u64>) = queries
         .par_iter()
         // .iter()
         .map_with(&tree, |t, q| {
-            let result = t.query_nearest_periodic(q, &[1.0; 3]);
+            let result = t.query_nearest(q).unwrap();
             (result.0, result.1)
         })
         // .map(|q| tree.query_nearest(q))

@@ -24,7 +24,7 @@ fn main() {
     let query = [0.6, 0.1];
 
     // Query the tree
-    let (distance_squared, index, neighbor) = tree.query_nearest_k(&query, 1)[0];
+    let (distance_squared, index, neighbor) = tree.query_nearest(&query).unwrap();
 
     // Check that the distance squared is what we expect
     const TOLERANCE: f64 = 1e-6;

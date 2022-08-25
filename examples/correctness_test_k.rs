@@ -1,7 +1,6 @@
 use fnntw::Tree;
 use ndarray::Array2;
 use ndarray_npy::write_npy;
-use rand::{rngs::ThreadRng, Rng};
 use rayon::prelude::*;
 use std::error::Error;
 
@@ -16,9 +15,6 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(48)
-        .build_global()?;
 
     // Gather data and query points
     let data = get_data();
@@ -36,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let result: (Vec<f64>, Vec<u64>) = queries
             .par_iter()
             .map_with(&tree, |t, q| {
-                let result = t.query_nearest_k(q, K);
+                let result = t.query_nearest_k(q, K).unwrap();
                 result.iter().map(|n| (n.0, n.1)).collect::<Vec<(f64, u64)>>()
             }).flatten().unzip();
 
@@ -87,10 +83,4 @@ fn save_data_queries(
         &ndarray::Array2::from_shape_vec((NQUERY, DIMS), flat_query)?,
     )?;
     Ok(())
-}
-
-
-
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
-    [(); D].map(|_| rng.gen() )
 }

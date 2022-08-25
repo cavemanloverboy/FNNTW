@@ -15,9 +15,6 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(48)
-        .build_global()?;
 
     // Gather data and query points
     let data = get_data();
@@ -34,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .par_iter()
         // .iter()
         .map_with(&tree, |t, q| {
-            let result = t.query_nearest(q);
+            let result = t.query_nearest(q).unwrap();
             (result.0, result.1)
         })
         // .map(|q| tree.query_nearest(q))
