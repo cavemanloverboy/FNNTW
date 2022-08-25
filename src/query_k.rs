@@ -1,4 +1,4 @@
-use crate::{distance::*, Node, Tree, };
+use crate::{distance::*, Node, Tree, utils::{check_point, FnntwResult}, };
 use ordered_float::NotNan;
 
 pub(crate) mod container;
@@ -10,13 +10,31 @@ impl<'t, const D: usize> Tree<'t, D> {
         &'q self,
         query: &'q [f64; D],
         k: usize,
+    ) -> FnntwResult<Vec<(f64, u64, &'q [NotNan<f64>; D])>> {
+
+        // Check for valid query point
+        let query: &[NotNan<f64>; D] = check_point(query)?;
+
+        if let Some(ref boxsize) = self.boxsize {
+            
+            // Periodic query
+            Ok(self.query_nearest_k_periodic(query, k, boxsize))
+        } else {
+
+            // Nonperiodic query
+            Ok(self.query_nearest_k_nonperiodic(query, k))
+        }
+    }
+
+
+    fn query_nearest_k_nonperiodic<'q>(
+        &'q self,
+        query: &'q [NotNan<f64>; D],
+        k: usize,
     ) -> Vec<(f64, u64, &'q [NotNan<f64>; D])>
     where
         't: 'q,
     {
-
-        // TODO: check query
-        let query: &[NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
 
         // Get reference to the root node
         let current_node: &Node<'t, D> = &self.root_node;
@@ -24,8 +42,6 @@ impl<'t, const D: usize> Tree<'t, D> {
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
         // and distance to their associated space in form of (&usize, f64), where usize is
         // the index inside of self.nodes. The root node is checked at the end.
-        //
-        // TODO: test usize vs &usize
         let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
             Vec::with_capacity(self.height_hint);
 
@@ -45,20 +61,16 @@ impl<'t, const D: usize> Tree<'t, D> {
         container.index(&self.data_index)
     }
 
-    pub fn query_nearest_k_periodic<'q, 'i>(
+    fn query_nearest_k_periodic<'q, 'i>(
         &'q self,
-        query: &'q [f64; D],
+        query: &'q [NotNan<f64>; D],
         k: usize,
-        boxsize: &[f64; D],
+        boxsize: &[NotNan<f64>; D],
     ) -> Vec<(f64, u64, &'i [NotNan<f64>; D])>
     where
         'q: 'i,
         't: 'q,
     {
-
-        // TODO: check query, boxsize
-        let query: &'q [NotNan<f64>; D] = unsafe { std::mem::transmute(query) };
-        let boxsize: &[NotNan<f64>; D] = unsafe { std::mem::transmute(boxsize) };
 
         // First get real image result
         let mut real_image_container: Container<D> = {
@@ -69,8 +81,6 @@ impl<'t, const D: usize> Tree<'t, D> {
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
             // and distance to their associated space in form of (&usize, f64), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            //
-            // TODO: test usize vs &usize
             let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
                 Vec::with_capacity(self.height_hint);
 
@@ -94,9 +104,11 @@ impl<'t, const D: usize> Tree<'t, D> {
         for side in 0..D {
 
             // Do a single index here. This is equal to distance to lower side
+            // safety: made safe by const generic
             let query_component = unsafe { query.get_unchecked(side) };
 
             // Get distance to upper half
+            // safety: made safe by const generic
             let upper = unsafe { boxsize.get_unchecked(side) } - query_component;
 
             // !negative includes zero
@@ -124,6 +136,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                 .flat_map(|(side, flag)| if flag {
                     
                     // Get minimum of dist2 to lower and upper side
+                    // safety: made safe by const generic
                     Some( unsafe { closest_side_dist2.get_unchecked(side) } )
                 } else { None })
                 .fold(0.0, |acc, x| acc + x);
@@ -138,11 +151,14 @@ impl<'t, const D: usize> Tree<'t, D> {
                     if flag {
 
                         // Do a single index here. This is equal to distance to lower side
+                        // safety: made safe by const generic
                         let query_component: &NotNan<f64> =  unsafe { query.get_unchecked(idx) };
 
                         // Single index here as well
+                        // safety: made safe by const generic
                         let boxsize_component = unsafe { boxsize.get_unchecked(idx) };
 
+                        // safety: made safe by const generic
                         unsafe {
                             if *query_component < boxsize_component / 2.0 {
                                 // Add if in lower half of box
@@ -166,8 +182,6 @@ impl<'t, const D: usize> Tree<'t, D> {
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
             // and distance to their associated space in form of (&usize, f64), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            //
-            // TODO: test usize vs &usize
             let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
                 Vec::with_capacity(self.height_hint);
 
@@ -180,12 +194,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             );
         }
 
-        // this is fine because we don't actually reference the image
-        // unsafe { 
-            // std::mem::transmute(
-                real_image_container.index(&self.data_index)
-            // )
-        // }
+        real_image_container.index(&self.data_index)
     }
 
     #[inline(always)]
@@ -204,6 +213,7 @@ impl<'t, const D: usize> Tree<'t, D> {
         'i: 'o,
         't: 'i,
     {
+        // safety: indices are valid by construction, with the atomic lock on Vec<Node>
         let sibling = unsafe { self.nodes.get_unchecked(*sibling) };
         match sibling {
             // Sibling is a leaf
@@ -278,9 +288,11 @@ impl<'t, const D: usize> Tree<'t, D> {
                     ..
                 } => {
                     // Determine left/right split
+                    // safety: made safe by const generic
                     if unsafe { query.get_unchecked(*split_dim) > point.get_unchecked(*split_dim) }
                     {
                         // Record sibling node and the dist_sq to sibling's associated space
+                        // safety: indices are valid by construction, with the atomic lock on Vec<Node>
                         let (sibling_lower, sibling_upper) =
                             unsafe { self.nodes.get_unchecked(*left) }.get_bounds();
                         let dist_sq_to_space =
@@ -291,6 +303,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                         right
                     } else {
                         // Record sibling node and the dist_sq to its associated space
+                        // safety: indices are valid by construction, with the atomic lock on Vec<Node>
                         let (sibling_lower, sibling_upper) =
                             unsafe { self.nodes.get_unchecked(*right) }.get_bounds();
                         let dist_sq_to_space =
@@ -305,6 +318,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             };
 
             // Set leafnode
+            // safety: indices are valid by construction, with the atomic lock on Vec<Node>
             current_node = unsafe { self.nodes.get_unchecked(*next_leafnode) };
         }
 

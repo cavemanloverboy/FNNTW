@@ -48,21 +48,24 @@ pub struct Tree<'t, const D: usize> {
     #[allow(unused)]
     input: &'t [[f64; D]],
 
-    // O(1) lookup table for index of point
+    /// O(1) lookup table for index of point
     pub data_index: HashMap<&'t [NotNan<f64>; D], u64>,
 
-    // Unused, but here for future/user reference
+    /// Unused, but here for future/user reference
     #[allow(unused)]
     pub leafsize: usize,
 
-    // Container of all nodes (stems, leaves), in the tree, except the root node.
+    /// Container of all nodes (stems, leaves), in the tree, except the root node.
     pub nodes: Vec<Node<'t, D>>,
 
-    // Approximate height (used for determining some allocation sizes)
+    /// Approximate height (used for determining some allocation sizes)
     pub height_hint: usize,
 
-    // Root node
+    /// Root node
     root_node: Node<'t, D>,
+
+    /// Optional boxsize for periodic queries.
+    boxsize: Option<[NotNan<f64>; D]>
 }
 
 #[derive(Debug)]
@@ -150,14 +153,9 @@ impl<'t, const D: usize> Tree<'t, D> {
         let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
         // This is used to determine the size several allocations
-        //
-        // TODO: There exists a way to get the exact height during build,
-        // but that will require a refactor that I don't want to do just yet
-        // and i'm not convinced it will be that big of a performance boost
         let data_len = input.len();
         let height_hint = ilog2(data_len);
 
-        // Unsafe operations require some min leafsize
         // Also probably a good idea to keep above 4 anyway.
         // if leafsize < 4 {
         //     return Err("Choose a leafsize >= 4");
@@ -191,7 +189,7 @@ impl<'t, const D: usize> Tree<'t, D> {
 
             #[cfg(feature = "timing")]
             {
-                // safe because no other thread can hold this mutable reference
+                // safety: safe because no other thread can hold this mutable reference
                 unsafe {
                     *TOTAL.get_mut() = initial_vec_ref as usize
                         + LEAF_VEC_ALLOC.load(Ordering::SeqCst)
@@ -257,6 +255,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                 nodes,
                 height_hint,
                 root_node,
+                boxsize: None,
             })
         })
     }
@@ -287,6 +286,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             if F {
                 // If this is the first iteration, we must find the bounds of the data before median
                 subset.iter().fold(
+                    // safety: valid f64 consts
                     unsafe {
                         (
                             [NotNan::new_unchecked(std::f64::MAX); D],
@@ -295,6 +295,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                     },
                     |(mut lo, mut hi), point| {
                         for idx in 0..D {
+                            // safety: made safe by const generic
                             unsafe {
                                 let lo_idx = lo.get_unchecked_mut(idx);
                                 *lo_idx = (*lo_idx).min(*point.get_unchecked(idx));
@@ -315,6 +316,7 @@ impl<'t, const D: usize> Tree<'t, D> {
 
                 // Modify parent split_dim component
                 let parent_split_dim = (split_level - 1) % D;
+                // safety: made safe by const generic in % D
                 unsafe {
                     if L {
                         // If we are left, then our upper bound got cut off
@@ -365,8 +367,10 @@ impl<'t, const D: usize> Tree<'t, D> {
                 // Select median in this subset based on split_dim component
                 let (left, median, right) = subset
                     .select_nth_unstable_by(median_index, |a, b| unsafe {
+                        // safety: made safe by const generic
                         a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
                     });
+                // safety: made safe by const generic
                 let split_val = unsafe { median.get_unchecked(split_dim) };
                 #[cfg(feature = "timing")]
                 let stem_median = timer.elapsed().as_nanos();
@@ -466,10 +470,6 @@ impl<'t, const D: usize> Tree<'t, D> {
         let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
         // This is used to determine the size several allocations
-        //
-        // TODO: There exists a way to get the exact height during build,
-        // but that will require a refactor that I don't want to do just yet
-        // and i'm not convinced it will be that big of a performance boost
         let data_len = input.len();
         let height_hint = ilog2(data_len);
 
@@ -563,7 +563,8 @@ impl<'t, const D: usize> Tree<'t, D> {
                 leafsize,
                 nodes,
                 height_hint,
-                root_node
+                root_node,
+                boxsize: None,
             })
         })
     }
@@ -593,6 +594,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             if F {
                 // If this is the first iteration, we must find the bounds of the data before median
                 subset.iter().fold(
+                    // safety: f64 consts are always valid
                     unsafe {
                         (
                             [NotNan::new_unchecked(std::f64::MAX); D],
@@ -601,6 +603,7 @@ impl<'t, const D: usize> Tree<'t, D> {
                     },
                     |(mut lo, mut hi), point| {
                         for idx in 0..D {
+                            // safety: made safe by const generic
                             unsafe {
                                 let lo_idx = lo.get_unchecked_mut(idx);
                                 *lo_idx = (*lo_idx).min(*point.get_unchecked(idx));
@@ -621,6 +624,7 @@ impl<'t, const D: usize> Tree<'t, D> {
 
                 // Modify parent split_dim component
                 let parent_split_dim = (split_level - 1) % D;
+                // safety: made safe by const generic
                 unsafe {
                     if L {
                         // If we are left, then our upper bound got cut off
@@ -638,20 +642,6 @@ impl<'t, const D: usize> Tree<'t, D> {
             true => {
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
-                // let mut lower = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MAX) });
-                // let mut upper = [(); D].map(|_| unsafe { NotNan::new_unchecked(std::f64::MIN) });
-                // for i in 0..D {
-                //     for p in 0..subset.len() {
-                //         unsafe {
-
-                //             // get mut refs
-                //             let lower_i = lower.get_unchecked_mut(i);
-                //             let upper_i = upper.get_unchecked_mut(i);
-                //             *lower_i = *(&*lower_i).min(subset.get_unchecked(p).get_unchecked(i));
-                //             *upper_i = *(&*upper_i).max(subset.get_unchecked(p).get_unchecked(i));
-                //         }
-                //     }
-                // }
                 let leaf = Node::Leaf {
                     points: subset.to_vec(),
                     lower,
@@ -683,8 +673,10 @@ impl<'t, const D: usize> Tree<'t, D> {
                 // Select median in this subset based on split_dim component
                 let (left, median, right) = subset
                     .select_nth_unstable_by(median_index, |a, b| unsafe {
+                        // safety: made safe by const generic
                         a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
                     });
+                // safety: made safe by const generic
                 let split_val = unsafe { median.get_unchecked(split_dim) };
                 #[cfg(feature = "timing")]
                 let stem_median = timer.elapsed().as_nanos();
@@ -731,10 +723,45 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
     }
 
-    // Returns the number of nodes in the tree
-    // The root node is contained in the struct, so must add one.
+    /// Returns the number of nodes in the tree
+    /// The root node is contained in the struct, so must add one.
     pub fn size(&self) -> usize {
         self.nodes.len() + 1
+    }
+
+
+    /// Set the boxsize used for periodic queries
+    pub fn with_boxsize(
+        mut self,
+        boxsize: &[f64; D],
+    ) -> FnntwResult<Self> {
+        
+        // Get lower and upper bounds of data
+        let (lower, upper) = self.root_node.get_bounds();
+
+        // Check that the data bounding box is in R_+^n
+        for component in lower {
+            if component.is_sign_negative() {
+                return Err(FnntwError::NegativeDataPeriodicQuery)
+            } else if component.is_infinite() || component.is_nan() || component.is_subnormal() {
+                return Err(FnntwError::InvalidBoxsize)
+            }
+        }
+
+        // Check that the specified boxsize encompasses the data
+        for i in 0..D {
+            if *upper[i] > boxsize[i] {
+                return Err(FnntwError::SmallBoxsize)
+            } else if upper[i].is_infinite() || upper[i].is_nan() || upper[i].is_subnormal() {
+                return Err(FnntwError::InvalidBoxsize)
+            }
+        }
+
+        // safety: just checked all properties that that NotNan assumes
+        unsafe {
+            self.boxsize = Some(std::mem::transmute::<&[f64; D], &[NotNan<f64>; D]>(boxsize).clone());
+        }
+        Ok(self)
     }
 }
 
@@ -743,7 +770,6 @@ mod tests {
 
     use crate::Tree;
     use concat_idents::concat_idents;
-    use ordered_float::NotNan;
     use seq_macro::seq;
 
     // Generate 1..16 dimensional size=1 kd tree unit tests

@@ -7,6 +7,7 @@ use ordered_float::NotNan;
 #[repr(transparent)]
 #[derive(Debug)]
 /// Using this struct to impl PartialOrd for f64.
+/// TODO: When generalizing to f32/f64, this will need its own type parameter as well.
 pub(crate) struct Candidate<'t, const D: usize>((f64, &'t[NotNan<f64>; D]));
 
 #[cfg(not(any(feature = "vec-container")))]
@@ -31,11 +32,13 @@ impl<'t, const D: usize> Container<'t,D> {
         if self.items.len() >= self.k {
 
             // If >=k elements, eject largest
+            // safety: Neighbor and tuple are same size w/ same elements
             let neighbor: Candidate<D> = unsafe { std::mem::transmute(neighbor) };
             *self.items.peek_mut().unwrap() = neighbor;
         } else {
 
             // If less than k elements, add element.
+            // safety: Neighbor and tuple are same size w/ same elements
             self.items.push( unsafe { std::mem::transmute(neighbor) });
         }
     }
@@ -104,11 +107,13 @@ impl<'t, const D: usize> Container<'t,D> {
             self.largest_dist2 = neighbor.0.max(second_largest);
 
             // Add neighbor
+            // safety: Neighbor and tuple are same size w/ same elements
             let neighbor: Candidate<D> = unsafe { std::mem::transmute(neighbor) };
             self.items.push(neighbor);
         } else {
 
             // If less than k elements, just add element.
+            // safety: Neighbor and tuple are same size w/ same elements
             self.items.push( unsafe { std::mem::transmute(neighbor) });
         }
     }
@@ -178,12 +183,13 @@ impl<'t, const D: usize> Ord for Candidate<'t, D> {
 fn test_transmute_neighbor() {
 
     // Define some point
-    let point = unsafe { &[NotNan::new_unchecked(0.6); 3]};
+    let point = &[NotNan::new(0.6).unwrap(); 3];
 
     // Define some neighbor that refers to this point
     let neighbor = Candidate((0.3, &point));
 
     // Transmute neighbor using the same value
+    // safety: this is a test of safety
     let tn: (f64, &[NotNan<f64>; 3]) = unsafe { 
         std::mem::transmute(Candidate((0.3, &point))) 
     };

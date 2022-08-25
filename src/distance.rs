@@ -8,6 +8,7 @@ pub fn squared_euclidean<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f64>;
     let mut dist_sq: f64 = 0.0;
 
     for idx in 0..D {
+        // safety: made safe by const generic
         unsafe {
             dist_sq += (a.get_unchecked(idx) - b.get_unchecked(idx)).powi(2);
         }
@@ -22,6 +23,7 @@ pub fn squared_euclidean_sep<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f
     let mut diff = [0.0_f64; D];
 
     for idx in 0..D {
+        // safety: made safe by const generic
         unsafe {
             *diff.get_unchecked_mut(idx) = *(a.get_unchecked(idx) - b.get_unchecked(idx));
         }
@@ -92,10 +94,13 @@ pub fn calc_dist_sq_to_space<const D: usize>(
     lower: &[NotNan<f64>; D],
     upper: &[NotNan<f64>; D],
 ) -> f64 {
-    // Initilalize a point
+
+    // Initialize a point
+    // safety: 0.0 is always not nan
     let mut closest_point = [unsafe { NotNan::new_unchecked(0.0_f64) }; D];
 
     for i in 0..D {
+        // safety: made safe by const generic
         unsafe {
             *closest_point.get_unchecked_mut(i) = *query
                 .get_unchecked(i)
@@ -132,6 +137,7 @@ pub fn new_best_short<'a, 'b, 'c, const D: usize>(
     for idx in 0..D {
         unsafe {
             // Add to accumulator variable
+            // safety: made safe by const generic
             dist_sq += (query.get_unchecked(idx) - candidate.get_unchecked(idx)).powi(2);
         }
 
@@ -164,44 +170,37 @@ mod tests {
     fn test_squared_euclidean() {
         use approx_eq::assert_approx_eq;
 
-        unsafe {
-            let a = [NotNan::new_unchecked(1.0), NotNan::new_unchecked(1.0)];
-            let b = [NotNan::new_unchecked(0.0), NotNan::new_unchecked(0.0)];
 
-            assert_approx_eq!(squared_euclidean(&a, &b), 2.0);
-        }
+        let a = [NotNan::new(1.0).unwrap(), NotNan::new(1.0).unwrap()];
+        let b = [NotNan::new(0.0).unwrap(), NotNan::new(0.0).unwrap()];
+
+        assert_approx_eq!(squared_euclidean(&a, &b), 2.0);
     }
 
     #[test]
     fn test_calc_dist_to_space_above() {
-        unsafe {
-            let query = &[NotNan::new_unchecked(2.0); 3];
-            let lower = &[NotNan::new_unchecked(0.0); 3];
-            let upper = &[NotNan::new_unchecked(1.0); 3];
+        let query = &[NotNan::new(2.0).unwrap(); 3];
+        let lower = &[NotNan::new(0.0).unwrap(); 3];
+        let upper = &[NotNan::new(1.0).unwrap(); 3];
 
-            assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 3.0);
-        }
+        assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 3.0);
     }
 
     #[test]
     fn test_calc_dist_to_space_below() {
-        unsafe {
-            let query = &[NotNan::new_unchecked(-1.0); 3];
-            let lower = &[NotNan::new_unchecked(0.0); 3];
-            let upper = &[NotNan::new_unchecked(1.0); 3];
+        let query = &[NotNan::new(-1.0).unwrap(); 3];
+        let lower = &[NotNan::new(0.0).unwrap(); 3];
+        let upper = &[NotNan::new(1.0).unwrap(); 3];
 
-            assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 3.0);
-        }
+        assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 3.0);
     }
 
     #[test]
     fn test_calc_dist_to_space_within() {
-        unsafe {
-            let query = &[NotNan::new_unchecked(0.5); 3];
-            let lower = &[NotNan::new_unchecked(0.0); 3];
-            let upper = &[NotNan::new_unchecked(1.0); 3];
+        let query = &[NotNan::new(0.5).unwrap(); 3];
+        let lower = &[NotNan::new(0.0).unwrap(); 3];
+        let upper = &[NotNan::new(1.0).unwrap(); 3];
 
-            assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 0.0);
-        }
+        assert_approx_eq!(calc_dist_sq_to_space(query, lower, upper), 0.0);
     }
 }
