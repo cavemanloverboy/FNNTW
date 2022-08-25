@@ -1,7 +1,7 @@
 use fnntw::{Tree, distance::squared_euclidean};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
-
+use std::error::Error;
 
 
 const NDATA: usize = 100;
@@ -9,7 +9,7 @@ const NQUERY: usize = 10_000;
 const D: usize = 3;
 
 #[test]
-fn test_brute_force() {
+fn test_brute_force() -> Result<(), Box<dyn Error>> {
 
     // Random number generator
     let mut rng = rand::thread_rng();
@@ -25,12 +25,12 @@ fn test_brute_force() {
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new(&data, 32).unwrap();
+    let tree = Tree::<'_, D>::new(&data, 1).unwrap();
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
     for q in &query {
-        results.push(tree.query_nearest(q));
+        results.push(tree.query_nearest(q)?);
     }
 
     // Brute force check results
@@ -38,6 +38,7 @@ fn test_brute_force() {
         assert_eq!(results[i], brute_force(q, &data))
     }
 
+    Ok(())
 }
 
 

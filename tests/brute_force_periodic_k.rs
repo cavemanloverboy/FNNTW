@@ -1,8 +1,7 @@
 use fnntw::{Tree, distance::squared_euclidean};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
-
-
+use std::error::Error;
 
 const NDATA: usize = 100;
 const NQUERY: usize = 10_000;
@@ -11,7 +10,7 @@ const D: usize = 3;
 const K: usize = 80;
 
 #[test]
-fn test_brute_force_periodic_k() {
+fn test_brute_force_periodic_k()-> Result<(), Box<dyn Error>> {
 
     // Random number generator
     let mut rng = rand::thread_rng();
@@ -27,12 +26,13 @@ fn test_brute_force_periodic_k() {
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new_parallel(&data, 32, 1).unwrap();
+    let tree = Tree::<'_, D>::new_parallel(&data, 1, 1)?
+        .with_boxsize(&BOXSIZE)?;
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
     for q in &query {
-        results.push(tree.query_nearest_k_periodic(q, K, &BOXSIZE));
+        results.push(tree.query_nearest_k(q, K)?);
     }
 
     // Brute force check results
@@ -44,6 +44,7 @@ fn test_brute_force_periodic_k() {
         assert_eq!(results[i], expected);
     }
 
+    Ok(())
 }
 
 
