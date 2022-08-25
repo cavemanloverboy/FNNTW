@@ -1,5 +1,4 @@
 use fnntw::Tree;
-use ordered_float::NotNan;
 use rayon::prelude::*;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -37,7 +36,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     let v: Vec<_> = black_box(&query)
                         .par_iter()
                         .map_with(black_box(&tree), |t, q| {
-                            let (dist, idx, ptr) = t.query_nearest(black_box(q));
+                            let (dist, idx, ptr) = t.query_nearest(black_box(q)).unwrap();
                             drop(dist);
                             drop(idx);
                             drop(ptr);
@@ -48,6 +47,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             },
         );
 
+        let tree = tree.with_boxsize(&BOXSIZE).unwrap();
         group.bench_function(
             "periodic",
             |b| {
@@ -55,7 +55,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     let v: Vec<_> = black_box(&query)
                         .par_iter()
                         .map_with(black_box(&tree), |t, q| {
-                            let (dist, idx, ptr) = t.query_nearest_periodic(black_box(q), &BOXSIZE);
+                            let (dist, idx, ptr) = t.query_nearest(black_box(q)).unwrap();
                             drop(dist);
                             drop(idx);
                             drop(ptr);

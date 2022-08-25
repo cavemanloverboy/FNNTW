@@ -30,8 +30,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         .summary_scale(criterion::AxisScale::Logarithmic)
     );
 
-    let tree = Tree::new(black_box(&data), black_box(32)).unwrap();
     for log2k in [5] {
+        let tree = Tree::new(black_box(&data), black_box(32)).unwrap();
+
         group.bench_function(
             format!("log2(k)={log2k} nonpbc"),
             |b| {
@@ -48,6 +49,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             },
         );
 
+        let tree = tree.with_boxsize(&BOXSIZE).unwrap();
         group.bench_function(
             format!("log2(k)={log2k} pbc"),
             |b| {
@@ -55,7 +57,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     let v: Vec<_> = black_box(&query)
                         .par_iter()
                         .map_with(black_box(&tree), |t, q| {
-                            let results = black_box(t.query_nearest_k_periodic(black_box(q), black_box(2_usize.pow(log2k)), &BOXSIZE));
+                            let results = black_box(t.query_nearest_k(black_box(q), black_box(2_usize.pow(log2k))));
                             drop(results);
                         })
                         .collect();
