@@ -5,6 +5,9 @@ impl<'t, const D: usize> Tree<'t, D> {
 
 
     #[cfg(not(feature = "do-not-return-position"))]
+    /// Queries the [Tree] for the nearest neighbor to the `query` point. 
+    /// Returns the squared euclidean distance to the neighbor, the neighbor's
+    /// corresponding index, and a reference to the neighbor's position.
     pub fn query_nearest(
         &'t self,
         query: &[f64; D]
@@ -167,6 +170,9 @@ impl<'t, const D: usize> Tree<'t, D> {
     }
 
     #[cfg(feature = "do-not-return-position")]
+    /// Queries the [Tree] for the nearest neighbor to the `query` point. 
+    /// Returns the squared euclidean distance to the neighbor
+    /// and the neighbor's corresponding index.
     pub fn query_nearest(
         &'t self,
         query: &[f64; D]

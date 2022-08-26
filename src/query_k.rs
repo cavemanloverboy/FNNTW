@@ -7,6 +7,9 @@ use container::Container;
 impl<'t, const D: usize> Tree<'t, D> {
 
     #[cfg(not(feature = "do-not-return-position"))]
+    /// Queries the [Tree] for the nearest k neighbors to the `query` point. 
+    /// Returns the squared euclidean distances to the neighbor, the neighbors'
+    /// corresponding indices, and references to the neighbors' positions.
     pub fn query_nearest_k<'q>(
         &'q self,
         query: &'q [f64; D],
@@ -200,6 +203,9 @@ impl<'t, const D: usize> Tree<'t, D> {
     }
 
     #[cfg(feature = "do-not-return-position")]
+    /// Queries the [Tree] for the nearest k neighbors to the `query` point. 
+    /// Returns the squared euclidean distances to the neighbor, and the neighbors'
+    /// corresponding indices.
     pub fn query_nearest_k<'q>(
         &'q self,
         query: &'q [f64; D],
