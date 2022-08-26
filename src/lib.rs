@@ -15,7 +15,7 @@ use num_format::{Locale, ToFormattedString};
 pub mod distance;
 pub mod query;
 pub mod query_k;
-mod utils;
+pub mod utils;
 
 use utils::*;
 

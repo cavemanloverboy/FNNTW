@@ -1,6 +1,6 @@
 [package]
 name = "fnntw"
-version = "0.2.0"
+version = "0.2.1"
 description = "FNNTW: Fastest Nearest Neighbor (in the) West. A fast kdtree/kNN library."
 authors = ["Cavey Cool <caveycool@gmail.com>"]
 repository = "https://github.com/cavemanloverboy/fnstw"
