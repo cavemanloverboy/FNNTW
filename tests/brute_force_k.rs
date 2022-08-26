@@ -52,7 +52,31 @@ fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
     [(); D].map(|_|rng.gen() )
 }
 
+#[cfg(feature = "do-not-return-position")]
+fn brute_force_k<'d, const D: usize>(
+    q: &[f64; D],
+    data: &'d [[f64; D]],
+    k: usize,
+) -> Vec<(f64, u64)> {
 
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
+
+    let mut all = Vec::with_capacity(data.len());
+
+    for (d, i) in data.iter().zip(0_u64..) {
+        let dist = squared_euclidean::<D>(q, d);
+        all.push((dist, i))
+    }
+
+    // this is safe so long as [0, 1] randoms are used
+    all.sort_by(|p1, p2| p1.0.partial_cmp(&p2.0).unwrap());
+    all.truncate(k);
+    all
+}
+
+#[cfg(not(feature = "do-not-return-position"))]
 fn brute_force_k<'d, const D: usize>(
     q: &[f64; D],
     data: &'d [[f64; D]],

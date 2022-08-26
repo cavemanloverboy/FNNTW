@@ -36,10 +36,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                     let v: Vec<_> = black_box(&query)
                         .par_iter()
                         .map_with(black_box(&tree), |t, q| {
-                            let (dist, idx, ptr) = t.query_nearest(black_box(q)).unwrap();
-                            drop(dist);
-                            drop(idx);
-                            drop(ptr);
+                            let results = t.query_nearest(black_box(q)).unwrap();
+                            drop(results);
                         })
                         .collect();
                     drop(v)

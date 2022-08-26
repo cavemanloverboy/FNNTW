@@ -46,7 +46,7 @@ fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
     [(); D].map(|_| rng.gen())
 }
 
-
+#[cfg(not(feature = "do-not-return-position"))]
 fn brute_force<'d, const D: usize>(
     q: &[f64; D],
     data: &'d [[f64; D]],
@@ -65,6 +65,31 @@ fn brute_force<'d, const D: usize>(
         if dist < best_dist {
             best_dist = dist;
             best = (best_dist, i, d)
+        }
+    }
+
+    best
+}
+
+#[cfg(feature = "do-not-return-position")]
+fn brute_force<'d, const D: usize>(
+    q: &[f64; D],
+    data: &'d [[f64; D]],
+) -> (f64, u64) {
+
+    // No need for nan checks here
+    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
+
+    let mut best_dist = std::f64::MAX;
+    let mut best = (std::f64::MAX, std::u64::MAX);
+    for (d, i) in data.iter().zip(0..) {
+        
+        let dist = squared_euclidean(q, d);
+
+        if dist < best_dist {
+            best_dist = dist;
+            best = (best_dist, i)
         }
     }
 

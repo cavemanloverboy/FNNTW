@@ -50,6 +50,7 @@ impl<'t, const D: usize> Container<'t,D> {
     }
 
     #[cfg(not(any(feature = "vec-container")))]
+    #[cfg(not(feature = "do-not-return-position"))]
     pub(super) fn index<'i>(
         self,
         data_index: &HashMap<&'t [NotNan<f64>; D], u64>
@@ -61,6 +62,25 @@ impl<'t, const D: usize> Container<'t,D> {
             .into_iter()
             .map(|neighbor| {
                 (neighbor.0.0, data_index[neighbor.0.1], neighbor.0.1)
+            }).collect();
+        indexed.sort_by(|a, b| a.0.partial_cmp(&b.0)
+            .expect("encountered nan or inf"));
+        indexed
+    }
+
+    #[cfg(not(any(feature = "vec-container")))]
+    #[cfg(feature = "do-not-return-position")]
+    pub(super) fn index<'i>(
+        self,
+        data_index: &HashMap<&'t [NotNan<f64>; D], u64>
+    ) -> Vec<(f64, u64)>
+    where
+        't: 'i,
+    {
+        let mut indexed: Vec<_> = self.items
+            .into_iter()
+            .map(|neighbor| {
+                (neighbor.0.0, data_index[neighbor.0.1])
             }).collect();
         indexed.sort_by(|a, b| a.0.partial_cmp(&b.0)
             .expect("encountered nan or inf"));
@@ -125,6 +145,7 @@ impl<'t, const D: usize> Container<'t,D> {
     }
 
     #[cfg(feature = "vec-container")]
+    #[cfg(not(feature = "do-not-return-position"))]
     pub(super) fn index<'i>(
         self,
         data_index: &HashMap<&'t [NotNan<f64>; D], u64>
@@ -136,6 +157,25 @@ impl<'t, const D: usize> Container<'t,D> {
             .into_iter()
             .map(|neighbor| {
                 (neighbor.0.0, data_index[neighbor.0.1], neighbor.0.1)
+            }).collect();
+        indexed.sort_by(|a, b| a.0.partial_cmp(&b.0)
+            .expect("encountered nan or inf"));
+        indexed
+    }
+
+    #[cfg(feature = "vec-container")]
+    #[cfg(feature = "do-not-return-position")]
+    pub(super) fn index<'i>(
+        self,
+        data_index: &HashMap<&'t [NotNan<f64>; D], u64>
+    ) -> Vec<(f64, u64)>
+    where
+        't: 'i,
+    {
+        let mut indexed: Vec<_> = self.items
+            .into_iter()
+            .map(|neighbor| {
+                (neighbor.0.0, data_index[neighbor.0.1])
             }).collect();
         indexed.sort_by(|a, b| a.0.partial_cmp(&b.0)
             .expect("encountered nan or inf"));
