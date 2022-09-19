@@ -22,13 +22,13 @@ for trial in range(1-WARMUP,TRIALS+1):
 
         # Build tree
         start = time()
-        tree = pyfnntw.Tree(data, 32, 1)
+        tree = pyfnntw.Tree(data, 32, par_split_level=1)#, boxsize=np.array([1.0, 1.0, 1.0]))
         build_time = (time() - start) * 1000
         trial_build_time += build_time
 
         # query tree
         start = time()
-        (r, ids) = tree.query(query)
+        (r, ids) = tree.query(query, 1)
         query_time = (time() - start) * 1000
         trial_query_time += query_time
 

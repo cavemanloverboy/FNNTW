@@ -1,6 +1,6 @@
 [package]
 name = "pyfnntw"
-version = "0.1.3"
+version = "0.2.2"
 description = "FNNTW: Fastest Nearest Neighbor (in the) West. A fast kdtree/kNN library."
 authors = ["Cavey Cool <caveycool@gmail.com>"]
 repository = "https://github.com/cavemanloverboy/fnstw"
@@ -13,12 +13,15 @@ name = "pyfnntw"
 crate-type = ["cdylib"]
 
 [dependencies]
-fnntw = "0.1.3"
+fnntw = { version = "0.2.2", features = ["do-not-return-position"] }
 pyo3 = { version = "0.16.5", features = ["extension-module"] }
 ouroboros = "0.15.2"
 numpy = "0.16.2"
 rayon = "1.5.3"
 ndarray = { version = "0.15.6", features = ["rayon"] }
+
+[dev-dependencies]
+ordered-float = "3.0.0"
 
 [profile.release]
 lto = "fat"

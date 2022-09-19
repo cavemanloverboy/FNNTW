@@ -48,12 +48,13 @@ Most libraries return either the kNN distance or the distance and the correspond
 ##### a. `HashMap<&'[NotNan<f64>; D], u64>`
 We attempted to do what other libraries do, which is to carry around the data's index in some struct or tuple, e.g. `&(usize, [NotNan<f64>; D])`, but found poor performance. By using the `ordered_float` crate's `NotNan<T>`, struct, floating points become hashable. Then, one can do all querying operations using just the query and candiate positions, and then do an O(1) lookup at the end to retrieve the closest neighbor's index. This `HashMap` is constructed at build time **in parallel** with the tree itself, adding only the minimal overhead of a thread spawn.
 
-### 3. Unsafe Accesses (Maybe.. Probably Minor, Not Benchmarked)
-(I debated about whether I should even mention this one...) Because we know the shape of all arrays (i.e. the dimension of the tree) at compile time, the `unsafe` methods `get_unchecked` and `get_unchecked_mut` are used liberally throughout the code. Although the impact of this has not been meausured explicitly, theoretically this means virtually no bounds checks are done. It is possible that LLVM would have optimized away lots of the bounds checks anyway. There are also `unwrap_unchecked` calls for `Option<T>` which the algorithm guarantees to be nonempty. (Going against best practices, these two use cases were pre-optimizations).
-
+### 3. Unsafe Accesses
+Although a `const fn` can be used to calculate the size of a particular tree at compile time, that is not done in this library (to support multiple trees in a single program, as well as trees for datasets made at runtime). As such, the size of the vector containing the nodes belonging to the tree is not known to the compiler at compile time. However, valid indices to children nodes are generated at runtime when building the tree and so the `unsafe` methods `get_unchecked` and `get_unchecked_mut` speed up access times by omitting bounds checks.
 
 # Present State of the Code
-At present, the library only serves 1NN queries. In the very near future, this functionality will be expanded to kNN (k>1) queries. In addition, support for periodic boundary conditions will be added. Finally, there are plans to add generic parameters to allow for monomorphization over `f32` and `f64` (at present only `f64` is supported).
+At present, the library serves 1NN and kNN queries with separate APIs. **Note that the f64 returned represents the squared euclidean distance to the neighbor, not the euclidean distance**. The library supports periodic boundary conditions via the `with_boxsize` method of `Tree`. Finally, there are plans to add generic parameters to allow for monomorphization over `f32` and `f64` (at present only `f64` is supported).
+
+The accompanying pyfnntw module also supports 1NN and kNN queries (nonperiodic and periodic), but presently the kNN query is slow. More work will be done to make it on par with the rust library's performance. The 1NN query is on par with the rust library. Note that setting k=1 uses the kNN query method; to use the 1NN query just omit the optional `k` parameter, or set it to `None`.
 
 
 # Benchmark Against Other Codes

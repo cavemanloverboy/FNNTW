@@ -1,11 +1,11 @@
+use ndarray::Array2;
 use pyo3::{prelude::*, exceptions};
-use fnntw::{Tree as FNNTWTree, NotNan};
+use fnntw::{Tree as FNNTWTree};
 use numpy::*;
 use ouroboros::*;
-
-use numpy::ndarray::{Axis, Array1, ArrayView2};
+use numpy::ndarray::{Array1, ArrayView2};
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
-use rayon::prelude::{ParallelBridge, ParallelIterator};
+use rayon::prelude::ParallelIterator;
 use rayon::prelude::*;
 
 /// A Python module implemented in Rust.
@@ -13,7 +13,7 @@ use rayon::prelude::*;
 fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
 
     #[pyclass]
-    struct Tree(Box<dyn FNTree + Send + Sync + 'static>);
+    struct Tree(Box<dyn FNTree + Send + Sync>);
 
 
     #[pymethods]
@@ -23,9 +23,21 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
         fn new(
             data: PyReadonlyArray2<'_, f64>,
             leafsize: usize,
+            boxsize: Option<PyReadonlyArray1<'_, f64>>,
             par_split_level: Option<usize>,
         ) -> PyResult<Tree> {
 
+            // If a boxsize is specified for periodic boundary conditions,
+            // check that it is the same dimension as the data
+            if let Some(ref boxsize) = boxsize {
+                if boxsize.shape()[0] != data.shape()[1] {
+                    return Err(PyErr::new::<exceptions::PyTypeError, _>(
+                        "the dimensions of boxsize does not match the dimensions of data."
+                    ))
+                }
+            }
+
+            // Enable parallelism
             let threads = std::thread::available_parallelism()?.into();
             match rayon::ThreadPoolBuilder::new()
                 .num_threads(threads)
@@ -49,42 +61,83 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             match dims[1] {
                 2 => {
 
-                    let data: &[[NotNan<f64>; 2]] = unsafe {
-                        std::mem::transmute(slice_as_chunks::<f64, 2>(data
+                    // Transform the data into a slice of arrays,
+                    // which is what the library expects
+                    //
+                    // safety: converting to static as part of python requirements.
+                    // can lead to (read-only) dangling pointers if data is collected by python gc.
+                    let data: &[[f64; 2]] = unsafe { std::mem::transmute(
+                        slice_as_chunks::<f64, 2>(data
                             .as_array()
                             .as_slice()
                             .unwrap()
-                        ))};
+                        )
+                    )};
 
+                    // Build the tree
                     let tree: Tree2 = Tree2Builder {
                         data,
-                        tree_builder: |data: &&[[NotNan<f64>; 2]]| {
-                            if let Some(psl) = par_split_level {
-                                FNNTWTree::<'_, 2>::new_parallel(*data, leafsize, psl).unwrap()
+                        tree_builder: |data: &&[[f64; 2]]| {
+
+                            // Build the tree
+                            let mut tree = if let Some(psl) = par_split_level {
+                                FNNTWTree::<'_, 2>::new_parallel(*data, leafsize, psl)
+                                    .expect("failed to build tree")
                             } else {
-                                FNNTWTree::<'_, 2>::new(data, leafsize).unwrap()
+                                FNNTWTree::<'_, 2>::new(data, leafsize)
+                                    .expect("failed to build tree")
+                            };
+
+                            // Add a boxsize for peridic boundary conditions, if specified
+                            if let Some(boxsize) = boxsize {
+                                tree = tree
+                                    .with_boxsize(boxsize.as_slice().unwrap().try_into().unwrap())
+                                    .expect("failed to apply periodic boundary conditions");
                             }
+
+                            tree
                         },
                     }.build();
             
                     Ok(Tree(Box::new(tree)))
                 },
                 3 => {
-                    let data: &[[NotNan<f64>; 3]] = unsafe {
-                        std::mem::transmute(slice_as_chunks::<f64, 3>(data
+
+                    // Transform the data into a slice of arrays,
+                    // which is what the library expects
+                    //
+                    // safety: converting to static as part of python requirements.
+                    // can lead to (read-only) dangling pointers if data is collected by python gc.
+                    let data: &[[f64; 3]] = unsafe { std::mem::transmute(
+                        slice_as_chunks::<f64, 3>(data
                             .as_array()
                             .as_slice()
                             .unwrap()
-                        ))};
+                        )
+                    )};
 
+                    // Build the tree
                     let tree: Tree3 = Tree3Builder {
                         data,
-                        tree_builder: |data: &&[[NotNan<f64>; 3]]| {
-                            if let Some(psl) = par_split_level {
-                                FNNTWTree::<'_, 3>::new_parallel(*data, leafsize, psl).unwrap()
+                        tree_builder: |data: &&[[f64; 3]]| {
+
+                             // Build the tree
+                             let mut tree = if let Some(psl) = par_split_level {
+                                FNNTWTree::<'_, 3>::new_parallel(*data, leafsize, psl)
+                                    .expect("failed to build tree")
                             } else {
-                                FNNTWTree::<'_, 3>::new(*data, leafsize).unwrap()
+                                FNNTWTree::<'_, 3>::new(data, leafsize)
+                                    .expect("failed to build tree")
+                            };
+
+                            // Add a boxsize for peridic boundary conditions, if specified
+                            if let Some(boxsize) = boxsize {
+                                tree = tree
+                                    .with_boxsize(boxsize.as_slice().unwrap().try_into().unwrap())
+                                    .expect("failed to apply periodic boundary conditions");
                             }
+
+                            tree
                         },
                     }.build();
             
@@ -96,12 +149,26 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
 
         fn query(
             slf: PyRef<'_, Self>,
-            query: PyReadonlyArray2<'_, f64>
+            query: PyReadonlyArray2<'_, f64>,
+            k: Option<usize>
         ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-            let (distances, indices) = slf.0.query(query.as_array())?;
-            let distances = Array1::from_vec(distances);
-            let indices = Array1::from_vec(indices);
-            Ok((distances.to_pyarray(slf.py()).into(), indices.to_pyarray(slf.py()).into()))
+
+            if let Some(k) = k {
+                // unflattened branch
+                let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
+                let distances = Array2::from_shape_vec((query.shape()[0], k), distances)
+                    .expect("shape is known");
+                let indices = Array2::from_shape_vec((query.shape()[0], k), indices)
+                    .expect("shape is known");
+                Ok((distances.to_pyarray(slf.py()).into(), indices.to_pyarray(slf.py()).into()))
+            } else {
+                // k = 1 flattened branch
+                let (distances, indices) = slf.0.query(query.as_array())?;
+                let distances = Array1::from_vec(distances);
+                let indices = Array1::from_vec(indices);
+                Ok((distances.to_pyarray(slf.py()).into(), indices.to_pyarray(slf.py()).into()))
+            }
+            
         }
     }
 
@@ -114,7 +181,7 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
 #[self_referencing]
 struct Tree2<'a> {
     // data: Array1<[NotNan<f64>; 2]>,
-    data: &'a[[NotNan<f64>; 2]],
+    data: &'a[[f64; 2]],
     #[borrows(data)]
     #[covariant]
     pub tree: FNNTWTree<'this, 2>
@@ -123,7 +190,7 @@ struct Tree2<'a> {
 // #[pyclass]
 #[self_referencing]
 struct Tree3<'a> {
-    data: &'a[[NotNan<f64>; 3]],
+    data: &'a[[f64; 3]],
     #[borrows(data)]
     #[covariant]
     pub tree: FNNTWTree<'this, 3>
@@ -146,15 +213,59 @@ impl<'a> FNTree for Tree2<'a> {
             return Err(PyErr::new::<exceptions::PyTypeError, _>("A 3D tree can only be queried with 3D data"))
         }
 
+        // Transform slice of floats into slice of arrays
+        let query: &[[f64; 2]] = slice_as_chunks::<f64, 2>(query
+            .as_slice()
+            .unwrap()
+        );
+
+        let tree = self.borrow_tree();
+        let query_size = query.len();
+        let mut distances = Vec::with_capacity(query_size);
+        let mut indices = Vec::with_capacity(query_size);
+        query
+            .into_par_iter()
+            .map_with(tree, |t, q| {
+                t.query_nearest(q)
+                    .expect("error occurred during query")
+            })
+            .unzip_into_vecs(&mut distances, &mut indices);
+        Ok((distances, indices))
+    }
+
+    fn query_k(
+        &self,
+        query: ArrayView2<f64>,
+        k: usize,
+    ) -> PyResult<(Vec<f64>, Vec<u64>)> {
+
+        // Check dimensions of data
+        let dims: [usize; 2] = query
+            .shape()
+            .try_into()
+            .expect("2D array should definitely have 2 dims");
+
+        // Return error if not 2D
+        if dims[1] != 2 {
+            return Err(PyErr::new::<exceptions::PyTypeError, _>("A 3D tree can only be queried with 3D data"))
+        }
+
+        // Transform slice of floats into slice of arrays
+        let query: &[[f64; 2]] = slice_as_chunks::<f64, 2>(query
+            .as_slice()
+            .unwrap()
+        );
+
+        let tree = self.borrow_tree();
         let (distances, indices): (Vec<f64>, Vec<u64>) = query
-            .axis_iter(Axis(0))
-            .par_bridge()
+            .into_par_iter()
             .map(|q| {
-                let q: &[f64; 2] = q.as_slice().unwrap().try_into().unwrap();
-                let q: &[NotNan<f64>; 2] = &q.map(|x| unsafe { NotNan::new_unchecked(x)});
-                let (distance, index, _) = self.borrow_tree().query_nearest(q);
-            (distance, index)
-            }).unzip();
+                tree.query_nearest_k(q, k)
+                    .expect("error occurred during query")
+                    // .into_iter()
+            })
+            .flatten()
+            .unzip();
         
         Ok((distances, indices))
     }
@@ -174,14 +285,16 @@ impl<'a> FNTree for Tree3<'a> {
         
         // Return error if not 3D
         if dims[1] != 3 {
-            return Err(PyErr::new::<exceptions::PyTypeError, _>("A 3D tree can only be queried with 3D data"))
+            return Err(PyErr::new::<exceptions::PyTypeError, _>(
+                "A 3D tree can only be queried with 3D data"
+            ))
         }
 
-        let query: &[[NotNan<f64>; 3]] = unsafe {
-            std::mem::transmute(slice_as_chunks::<f64, 3>(query
+        // Transform slice of floats into slice of arrays
+        let query: &[[f64; 3]] = slice_as_chunks::<f64, 3>(query
                 .as_slice()
                 .unwrap()
-            ))};
+            );
 
         let tree = self.borrow_tree();
         let query_size = query.len();
@@ -190,19 +303,81 @@ impl<'a> FNTree for Tree3<'a> {
         query
             .into_par_iter()
             .map_with(tree, |t, q| {
-                let (d, i, _) = t.query_nearest(q);
-                (d, i)
-            }).unzip_into_vecs(&mut distances, &mut indices);
+                t.query_nearest(q)
+                    .expect("error occurred during query")
+            })
+            .unzip_into_vecs(&mut distances, &mut indices);
+        Ok((distances, indices))
+    }
 
+    fn query_k(
+        &self,
+        query: ArrayView2<f64>,
+        k: usize,
+    ) -> PyResult<(Vec<f64>, Vec<u64>)> {
+
+        // Check dimensions of data
+        let dims: [usize; 2] = query
+            .shape()
+            .try_into()
+            .expect("2D array should definitely have 2 dims");
+        
+        // Return error if not 3D
+        if dims[1] != 3 {
+            return Err(PyErr::new::<exceptions::PyTypeError, _>(
+                "A 3D tree can only be queried with 3D data"
+            ))
+        }
+
+        // Transform slice of floats into slice of arrays
+        let query: &[[f64; 3]] = slice_as_chunks::<f64, 3>(query
+                .as_slice()
+                .unwrap()
+            );
+
+        let tree = self.borrow_tree();
+        let (distances, indices): (Vec<f64>, Vec<u64>) = query
+            .into_par_iter()
+            .fold(|| (Vec::with_capacity(k), Vec::with_capacity(k)),
+                |mut acc, mut q| {
+                    let result = tree.query_nearest_k(q, k)
+                        .expect("error occurred during query");
+                    acc.0.append(result)
+            }).reduce(||, op);
+            // .map_with(tree, |t, q| {
+            //     t.query_nearest_k(q, k)
+            //         .expect("error occurred during query")
+            //         // .into_iter()
+            // })
+            // .fold(|| (Vec::with_capacity(query.len()*k), Vec::with_capacity(query.len()*k)),
+            //         |mut acc, mut result| {
+            //             for (distance, idx) in result {
+            //                 acc.0.push(distance);
+            //                 acc.1.push(idx);
+            //             }
+            //             acc
+            //     });
+            // .flatten_iter()
+            // .unzip();
         
         Ok((distances, indices))
     }
 }
 
 trait FNTree {
+
+    /// The inner vec is a 1d array containing the distances/indices
+    /// for every neighbor
     fn query(
         &self,
         query: ArrayView2<f64>,
+    ) -> PyResult<(Vec<f64>, Vec<u64>)>;
+
+    /// The inner vec is a flattened 2d array!
+    fn query_k(
+        &self,
+        query: ArrayView2<f64>,
+        k: usize,
     ) -> PyResult<(Vec<f64>, Vec<u64>)>;
 }
 
@@ -240,8 +415,8 @@ pub unsafe fn as_chunks_unchecked<T, const N: usize>(slice: &[T]) -> &[[T; N]] {
 
 #[cfg(test)]
 mod tests {
-    use fnntw::NotNan;
     use super::slice_as_chunks;
+    use ordered_float::NotNan;
 
     #[test]
     fn test_transmute_float() {
