@@ -66,9 +66,8 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, const D: usize>(
 ) -> bool
 where
     'i: 'o,
-    't: 'i
+    't: 'i,
 {
-
     // Run usual squared_euclidean fn
     let dist_sq: f64 = squared_euclidean(query, candidate);
 
@@ -82,8 +81,6 @@ where
     }
 }
 
-
-
 /// Calculate the distance from `query` to some space defined by `lower` and `upper`.
 ///
 /// This function constructs a point (neither in the tree nor is it `query`) that
@@ -94,7 +91,6 @@ pub fn calc_dist_sq_to_space<const D: usize>(
     lower: &[NotNan<f64>; D],
     upper: &[NotNan<f64>; D],
 ) -> f64 {
-
     // Initialize a point
     // safety: 0.0 is always not nan
     let mut closest_point = [unsafe { NotNan::new_unchecked(0.0_f64) }; D];
@@ -169,7 +165,6 @@ mod tests {
     #[test]
     fn test_squared_euclidean() {
         use approx_eq::assert_approx_eq;
-
 
         let a = [NotNan::new(1.0).unwrap(), NotNan::new(1.0).unwrap()];
         let b = [NotNan::new(0.0).unwrap(), NotNan::new(0.0).unwrap()];

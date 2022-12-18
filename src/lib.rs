@@ -42,7 +42,6 @@ const IS_RIGHT: bool = false;
 /// This [`Tree`] struct is the core struct that holds all nodes in the kdtree.
 /// It also contains the hashmap that is used to index the data.
 pub struct Tree<'t, const D: usize> {
-
     /// Data in the tree. Here for user reference mainly. For example,
     /// to inspect the data that was used to build the tree.
     #[allow(unused)]
@@ -65,7 +64,7 @@ pub struct Tree<'t, const D: usize> {
     root_node: Node<'t, D>,
 
     /// Optional boxsize for periodic queries.
-    boxsize: Option<[NotNan<f64>; D]>
+    boxsize: Option<[NotNan<f64>; D]>,
 }
 
 #[derive(Debug)]
@@ -148,7 +147,6 @@ impl<'t, const D: usize> Tree<'t, D> {
         leafsize: usize,
         par_split_level: usize,
     ) -> FnntwResult<Tree<'t, D>> {
-
         // Perform checks for valid data
         let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
@@ -169,7 +167,9 @@ impl<'t, const D: usize> Tree<'t, D> {
         // let data_index_map = data.iter().zip(0_u64..).collect::<HashMap<_,_>>();
         #[cfg(feature = "timing")]
         let initial_vec_ref = timer.elapsed().as_nanos();
-        let nodes = Arc::new(RwLock::new(Vec::with_capacity(size_of_tree(data_len, leafsize))));
+        let nodes = Arc::new(RwLock::new(Vec::with_capacity(size_of_tree(
+            data_len, leafsize,
+        ))));
 
         // Build index in the background
         std::thread::scope(|s| {
@@ -332,7 +332,6 @@ impl<'t, const D: usize> Tree<'t, D> {
 
         match is_leaf {
             true => {
-
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
                 let leaf = Node::Leaf {
@@ -365,8 +364,8 @@ impl<'t, const D: usize> Tree<'t, D> {
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
                 // Select median in this subset based on split_dim component
-                let (left, median, right) = subset
-                    .select_nth_unstable_by(median_index, |a, b| unsafe {
+                let (left, median, right) =
+                    subset.select_nth_unstable_by(median_index, |a, b| unsafe {
                         // safety: made safe by const generic
                         a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
                     });
@@ -381,7 +380,6 @@ impl<'t, const D: usize> Tree<'t, D> {
                 let mut right_idx = 0;
                 if split_level == par_split_level && par_split_level > 0 {
                     std::thread::scope(|s| {
-
                         // We are at the level over which user has specified
                         // we should parallelize the build. Handle in scoped threads
                         let left_arc = Arc::clone(&nodes);
@@ -461,11 +459,7 @@ impl<'t, const D: usize> Tree<'t, D> {
     }
 
     /// Create a new FNSTW kdTree [Tree] using a nonparallel build.
-    pub fn new(
-        input: &'t [[f64; D]],
-        leafsize: usize,
-    ) -> FnntwResult<Tree<'t, D>> {
-        
+    pub fn new(input: &'t [[f64; D]], leafsize: usize) -> FnntwResult<Tree<'t, D>> {
         // Perform checks for valid data
         let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
 
@@ -671,8 +665,8 @@ impl<'t, const D: usize> Tree<'t, D> {
                 #[cfg(feature = "timing")]
                 let timer = std::time::Instant::now();
                 // Select median in this subset based on split_dim component
-                let (left, median, right) = subset
-                    .select_nth_unstable_by(median_index, |a, b| unsafe {
+                let (left, median, right) =
+                    subset.select_nth_unstable_by(median_index, |a, b| unsafe {
                         // safety: made safe by const generic
                         a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
                     });
@@ -729,37 +723,33 @@ impl<'t, const D: usize> Tree<'t, D> {
         self.nodes.len() + 1
     }
 
-
     /// Set the boxsize used for periodic queries
-    pub fn with_boxsize(
-        mut self,
-        boxsize: &[f64; D],
-    ) -> FnntwResult<Self> {
-        
+    pub fn with_boxsize(mut self, boxsize: &[f64; D]) -> FnntwResult<Self> {
         // Get lower and upper bounds of data
         let (lower, upper) = self.root_node.get_bounds();
 
         // Check that the data bounding box is in R_+^n
         for component in lower {
             if component.is_sign_negative() {
-                return Err(FnntwError::NegativeDataPeriodicQuery)
+                return Err(FnntwError::NegativeDataPeriodicQuery);
             } else if component.is_infinite() || component.is_nan() || component.is_subnormal() {
-                return Err(FnntwError::InvalidBoxsize)
+                return Err(FnntwError::InvalidBoxsize);
             }
         }
 
         // Check that the specified boxsize encompasses the data
         for i in 0..D {
             if *upper[i] > boxsize[i] {
-                return Err(FnntwError::SmallBoxsize)
+                return Err(FnntwError::SmallBoxsize);
             } else if upper[i].is_infinite() || upper[i].is_nan() || upper[i].is_subnormal() {
-                return Err(FnntwError::InvalidBoxsize)
+                return Err(FnntwError::InvalidBoxsize);
             }
         }
 
         // safety: just checked all properties that that NotNan assumes
         unsafe {
-            self.boxsize = Some(std::mem::transmute::<&[f64; D], &[NotNan<f64>; D]>(boxsize).clone());
+            self.boxsize =
+                Some(std::mem::transmute::<&[f64; D], &[NotNan<f64>; D]>(boxsize).clone());
         }
         Ok(self)
     }
@@ -780,9 +770,7 @@ mod tests {
                 fn test_name() {
                     let leafsize = 16;
 
-                    let data: Vec<_> = (0..leafsize)
-                        .map(|x| [x as f64; $d])
-                        .collect();
+                    let data: Vec<_> = (0..leafsize).map(|x| [x as f64; $d]).collect();
 
                     let tree = Tree::new(&data, leafsize).unwrap();
                     assert_eq!(tree.size(), 1);
@@ -799,15 +787,9 @@ mod tests {
     #[test]
     fn test_make_1dtree_with_size_three() {
         let data: Vec<[f64; 1]> = [
-            [(); 32]
-                .map(|_| [0.1_f64])
-                .as_ref(),
-            [(); 1]
-                .map(|_| [0.5_f64])
-                .as_ref(),
-            [(); 32]
-                .map(|_| [0.9_f64])
-                .as_ref(),
+            [(); 32].map(|_| [0.1_f64]).as_ref(),
+            [(); 1].map(|_| [0.5_f64]).as_ref(),
+            [(); 32].map(|_| [0.9_f64]).as_ref(),
         ]
         .concat();
 
@@ -822,7 +804,6 @@ pub fn ilog2(x: usize) -> usize {
     (x as f64).log2() as usize
 }
 
-
 fn size_of_tree(datalen: usize, leafsize: usize) -> usize {
     if datalen == 0 {
         0
@@ -831,13 +812,12 @@ fn size_of_tree(datalen: usize, leafsize: usize) -> usize {
     } else {
         let left = datalen / 2 - 1;
         let right = datalen / 2 - datalen % 2;
-        1 + size_of_tree(left, leafsize) + size_of_tree(right, leafsize) 
+        1 + size_of_tree(left, leafsize) + size_of_tree(right, leafsize)
     }
 }
 
 #[test]
 fn test_size_of_tree() {
-
     //   1
     // 2   2
     let datalen = 5;

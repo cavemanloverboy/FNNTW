@@ -15,7 +15,6 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    
     // Gather data and query points
     let data = get_data();
     let queries = get_queries();
@@ -28,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap()
         .with_boxsize(&[1.0; 3])
         .unwrap();
-    
+
     // Query tree, in parallel
     let (sqdists, indices): (Vec<f64>, Vec<u64>) = queries
         .par_iter()
@@ -53,9 +52,7 @@ fn get_queries() -> Vec<[f64; DIMS]> {
 }
 
 fn gen_points<const N: usize>() -> Vec<[f64; DIMS]> {
-    (0..N)
-        .map(|_| [(); DIMS].map(|_| rand::random()))
-        .collect()
+    (0..N).map(|_| [(); DIMS].map(|_| rand::random())).collect()
 }
 
 fn save_results(sqdists: Vec<f64>, indices: Vec<u64>) -> Result<(), Box<dyn Error>> {

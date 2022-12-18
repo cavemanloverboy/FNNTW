@@ -1,4 +1,4 @@
-use fnntw::{Tree, distance::squared_euclidean};
+use fnntw::{distance::squared_euclidean, Tree};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
 use std::error::Error;
@@ -9,8 +9,7 @@ const D: usize = 3;
 const K: usize = 80;
 
 #[test]
-fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
-
+fn test_brute_force_k() -> Result<(), Box<dyn Error>> {
     // Random number generator
     let mut rng = rand::thread_rng();
 
@@ -47,9 +46,8 @@ fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-
 fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
-    [(); D].map(|_|rng.gen() )
+    [(); D].map(|_| rng.gen())
 }
 
 #[cfg(feature = "do-not-return-position")]
@@ -58,9 +56,8 @@ fn brute_force_k<'d, const D: usize>(
     data: &'d [[f64; D]],
     k: usize,
 ) -> Vec<(f64, u64)> {
-
     // No need for nan checks here
-    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let q: &[NotNan<f64>; D] = unsafe { std::mem::transmute(q) };
     let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
 
     let mut all = Vec::with_capacity(data.len());
@@ -81,10 +78,9 @@ fn brute_force_k<'d, const D: usize>(
     q: &[f64; D],
     data: &'d [[f64; D]],
     k: usize,
-) -> Vec<(f64, u64, &'d[NotNan<f64>; D])> {
-
+) -> Vec<(f64, u64, &'d [NotNan<f64>; D])> {
     // No need for nan checks here
-    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
+    let q: &[NotNan<f64>; D] = unsafe { std::mem::transmute(q) };
     let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
 
     let mut all = Vec::with_capacity(data.len());

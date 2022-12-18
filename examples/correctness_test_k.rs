@@ -4,7 +4,6 @@ use ndarray_npy::write_npy;
 use rayon::prelude::*;
 use std::error::Error;
 
-
 const K: usize = 128;
 const DIMS: usize = 3;
 const NDATA: usize = 100_000;
@@ -15,7 +14,6 @@ const RESULT_FILE: &'static str = "results.npy";
 const INDICES_FILE: &'static str = "indices.npy";
 
 fn main() -> Result<(), Box<dyn Error>> {
-
     // Gather data and query points
     let data = get_data();
     let queries = get_queries();
@@ -28,15 +26,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Query tree, in parallel
     let (sqdists, indices): (Array2<f64>, Array2<u64>) = {
-        
         let result: (Vec<f64>, Vec<u64>) = queries
             .par_iter()
             .map_with(&tree, |t, q| {
                 let result = t.query_nearest_k(q, K).unwrap();
-                result.iter().map(|n| (n.0, n.1)).collect::<Vec<(f64, u64)>>()
-            }).flatten().unzip();
+                result
+                    .iter()
+                    .map(|n| (n.0, n.1))
+                    .collect::<Vec<(f64, u64)>>()
+            })
+            .flatten()
+            .unzip();
 
-        (Array2::from_shape_vec((NQUERY, K), result.0).unwrap(), Array2::from_shape_vec((NQUERY, K), result.1).unwrap())
+        (
+            Array2::from_shape_vec((NQUERY, K), result.0).unwrap(),
+            Array2::from_shape_vec((NQUERY, K), result.1).unwrap(),
+        )
     };
     println!("Queried");
 
@@ -57,9 +62,7 @@ fn get_queries() -> Vec<[f64; DIMS]> {
 
 #[inline]
 fn gen_points<const N: usize>() -> Vec<[f64; DIMS]> {
-    (0..N)
-        .map(|_| [(); DIMS].map(|_| rand::random()))
-        .collect()
+    (0..N).map(|_| [(); DIMS].map(|_| rand::random())).collect()
 }
 
 fn save_results(sqdists: Array2<f64>, indices: Array2<u64>) -> Result<(), Box<dyn Error>> {
