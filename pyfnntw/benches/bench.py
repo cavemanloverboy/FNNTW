@@ -1,6 +1,6 @@
 import pyfnntw;
 import numpy as np;
-from time import time
+from time import perf_counter as time
 
 ND = 10**5
 NQ = 10**6

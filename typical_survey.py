@@ -1,5 +1,5 @@
 import numpy as np
-from time import time
+from time import perf_counter as time
 from pykdtree.kdtree import KDTree
 from scipy.spatial import cKDTree as Tree
 
