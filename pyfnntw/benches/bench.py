@@ -7,6 +7,8 @@ NQ = 10**6
 RUNS_PER_TRIAL = 10
 TRIALS = 10
 WARMUP = 5
+D = 3
+K = None
 
 overall_build_time = 0
 overall_query_time = 0
@@ -17,8 +19,8 @@ for trial in range(1-WARMUP,TRIALS+1):
     for _ in range(RUNS_PER_TRIAL):
         
         # Define data, query
-        data = np.random.uniform(size=(ND, 3))
-        query = np.random.uniform(size=(NQ, 3))
+        data = np.random.uniform(size=(ND, D))
+        query = np.random.uniform(size=(NQ, D))
 
         # Build tree
         start = time()
@@ -28,7 +30,7 @@ for trial in range(1-WARMUP,TRIALS+1):
 
         # query tree
         start = time()
-        (r, ids) = tree.query(query, 1)
+        (r, ids) = tree.query(query, k=K)
         query_time = (time() - start) * 1000
         trial_query_time += query_time
 
