@@ -158,17 +158,22 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
                 let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
                 let distances = Array2::from_shape_vec((query.shape()[0], k), distances)
                     .expect("shape is known");
-                let indices = Array2::from_shape_vec((query.shape()[0], k), indices)
-                    .expect("shape is known");
-                Ok((distances.to_pyarray(slf.py()).into(), indices.to_pyarray(slf.py()).into()))
+                let indices =
+                    Array2::from_shape_vec((query.shape()[0], k), indices).expect("shape is known");
+                Ok((
+                    distances.into_pyarray(slf.py()).into(),
+                    indices.into_pyarray(slf.py()).into(),
+                ))
             } else {
                 // k = 1 flattened branch
                 let (distances, indices) = slf.0.query(query.as_array())?;
                 let distances = Array1::from_vec(distances);
                 let indices = Array1::from_vec(indices);
-                Ok((distances.to_pyarray(slf.py()).into(), indices.to_pyarray(slf.py()).into()))
+                Ok((
+                    distances.into_pyarray(slf.py()).into(),
+                    indices.into_pyarray(slf.py()).into(),
+                ))
             }
-            
         }
     }
 
