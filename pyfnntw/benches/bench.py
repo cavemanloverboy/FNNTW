@@ -4,7 +4,7 @@ from time import perf_counter as time
 
 ND = 10**5
 NQ = 10**6
-RUNS = 10
+RUNS_PER_TRIAL = 10
 TRIALS = 10
 WARMUP = 5
 
@@ -14,7 +14,7 @@ print("Warming up")
 for trial in range(1-WARMUP,TRIALS+1):
     trial_build_time = 0
     trial_query_time = 0
-    for _ in range(RUNS):
+    for _ in range(RUNS_PER_TRIAL):
         
         # Define data, query
         data = np.random.uniform(size=(ND, 3))
@@ -37,10 +37,10 @@ for trial in range(1-WARMUP,TRIALS+1):
     if trial > 0:
         overall_build_time += trial_build_time
         overall_query_time += trial_query_time
-        trial_avg_build = trial_build_time / RUNS
-        trial_avg_query = trial_query_time / RUNS
+        trial_avg_build = trial_build_time / RUNS_PER_TRIAL
+        trial_avg_query = trial_query_time / RUNS_PER_TRIAL
         print(f"Trial {trial} results: {trial_avg_build=:.2f} ms, {trial_avg_query=:.2f} ms")
 
-overall_avg_build = overall_build_time / RUNS / TRIALS
-overall_avg_query = overall_query_time / RUNS / TRIALS
+overall_avg_build = overall_build_time / RUNS_PER_TRIAL / TRIALS
+overall_avg_query = overall_query_time / RUNS_PER_TRIAL / TRIALS
 print(f"Overall Results: {overall_avg_build=:.2f} ms, {overall_avg_query=:.2f} ms")
