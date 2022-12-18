@@ -223,13 +223,25 @@ impl<'a> FNTree for Tree2<'a> {
         let query_size = query.len();
         let mut distances = Vec::with_capacity(query_size);
         let mut indices = Vec::with_capacity(query_size);
-        query
-            .into_par_iter()
-            .map_with(tree, |t, q| {
-                t.query_nearest(q)
-                    .expect("error occurred during query")
-            })
-            .unzip_into_vecs(&mut distances, &mut indices);
+        let dist_ptr_usize = distances.as_mut_ptr() as usize;
+        let idx_ptr_usize = indices.as_mut_ptr() as usize;
+        query.into_par_iter().enumerate().for_each_with(
+            (dist_ptr_usize, idx_ptr_usize),
+            |(d, i), (j, q)| {
+                let result = tree.query_nearest(q).expect("error occurred during query");
+                let d = *d as *mut f64;
+                let i = *i as *mut u64;
+                unsafe {
+                    *d.add(j) = result.0;
+                    *i.add(j) = result.1;
+                }
+            },
+        );
+
+        unsafe {
+            distances.set_len(query.len());
+            indices.set_len(query.len());
+        }
         Ok((distances, indices))
     }
 
@@ -257,16 +269,33 @@ impl<'a> FNTree for Tree2<'a> {
         );
 
         let tree = self.borrow_tree();
-        let (distances, indices): (Vec<f64>, Vec<u64>) = query
-            .into_par_iter()
-            .map(|q| {
-                tree.query_nearest_k(q, k)
-                    .expect("error occurred during query")
-                    // .into_iter()
-            })
-            .flatten()
-            .unzip();
-        
+        let mut distances = Vec::with_capacity(query.len() * k);
+        let mut indices = Vec::with_capacity(query.len() * k);
+        let dist_ptr_usize = distances.as_mut_ptr() as usize;
+        let idx_ptr_usize = indices.as_mut_ptr() as usize;
+        query.into_par_iter().enumerate().for_each_with(
+            (dist_ptr_usize, idx_ptr_usize),
+            |(d, i), (j, q)| {
+                let result = tree
+                    .query_nearest_k(q, k)
+                    .expect("error occurred during query");
+                unsafe {
+                    let d = *d as *mut f64;
+                    let i = *i as *mut u64;
+                    for kk in 0..k {
+                        let query_k = result.get_unchecked(kk);
+                        *d.add(k * j + kk) = query_k.0;
+                        *i.add(k * j + kk) = query_k.1;
+                    }
+                }
+            },
+        );
+
+        unsafe {
+            distances.set_len(query.len() * k);
+            indices.set_len(query.len() * k);
+        }
+
         Ok((distances, indices))
     }
 }
@@ -300,13 +329,33 @@ impl<'a> FNTree for Tree3<'a> {
         let query_size = query.len();
         let mut distances = Vec::with_capacity(query_size);
         let mut indices = Vec::with_capacity(query_size);
-        query
-            .into_par_iter()
-            .map_with(tree, |t, q| {
-                t.query_nearest(q)
-                    .expect("error occurred during query")
-            })
-            .unzip_into_vecs(&mut distances, &mut indices);
+        let dist_ptr_usize = distances.as_mut_ptr() as usize;
+        let idx_ptr_usize = indices.as_mut_ptr() as usize;
+        query.into_par_iter().enumerate().for_each_with(
+            (dist_ptr_usize, idx_ptr_usize),
+            |(d, i), (j, q)| {
+                let result = tree.query_nearest(q).expect("error occurred during query");
+                let d = *d as *mut f64;
+                let i = *i as *mut u64;
+                unsafe {
+                    *d.add(j) = result.0;
+                    *i.add(j) = result.1;
+                }
+            },
+        );
+
+        unsafe {
+            distances.set_len(query.len());
+            indices.set_len(query.len());
+        }
+
+        // Safe alternative (comparable; barely slower)
+        // query
+        //     .into_par_iter()
+        //     .map_with(tree, |t, q| {
+        //         t.query_nearest(q).expect("error occurred during query")
+        //     })
+        //     .unzip_into_vecs(&mut distances, &mut indices);
         Ok((distances, indices))
     }
 
@@ -336,30 +385,45 @@ impl<'a> FNTree for Tree3<'a> {
             );
 
         let tree = self.borrow_tree();
-        let (distances, indices): (Vec<f64>, Vec<u64>) = query
-            .into_par_iter()
-            .fold(|| (Vec::with_capacity(k), Vec::with_capacity(k)),
-                |mut acc, mut q| {
-                    let result = tree.query_nearest_k(q, k)
-                        .expect("error occurred during query");
-                    acc.0.append(result)
-            }).reduce(||, op);
-            // .map_with(tree, |t, q| {
-            //     t.query_nearest_k(q, k)
-            //         .expect("error occurred during query")
-            //         // .into_iter()
-            // })
-            // .fold(|| (Vec::with_capacity(query.len()*k), Vec::with_capacity(query.len()*k)),
-            //         |mut acc, mut result| {
-            //             for (distance, idx) in result {
-            //                 acc.0.push(distance);
-            //                 acc.1.push(idx);
-            //             }
-            //             acc
-            //     });
-            // .flatten_iter()
-            // .unzip();
-        
+
+        // Unsafe
+        let mut distances = Vec::with_capacity(query.len() * k);
+        let mut indices = Vec::with_capacity(query.len() * k);
+        let dist_ptr_usize = distances.as_mut_ptr() as usize;
+        let idx_ptr_usize = indices.as_mut_ptr() as usize;
+        query.into_par_iter().enumerate().for_each_with(
+            (dist_ptr_usize, idx_ptr_usize),
+            |(d, i), (j, q)| {
+                let result = tree
+                    .query_nearest_k(q, k)
+                    .expect("error occurred during query");
+                unsafe {
+                    let d = *d as *mut f64;
+                    let i = *i as *mut u64;
+                    for kk in 0..k {
+                        let query_k = result.get_unchecked(kk);
+                        *d.add(k * j + kk) = query_k.0;
+                        *i.add(k * j + kk) = query_k.1;
+                    }
+                }
+            },
+        );
+
+        unsafe {
+            distances.set_len(query.len() * k);
+            indices.set_len(query.len() * k);
+        }
+
+        // // Safe alternative (very slow)
+        // let (distances, indices) = query
+        //     .into_par_iter()
+        //     .map_with(tree, |t, q| {
+        //         t.query_nearest_k(q, k)
+        //             .expect("error occurred during query")
+        //     })
+        //     .flatten()
+        //     .unzip();
+
         Ok((distances, indices))
     }
 }
