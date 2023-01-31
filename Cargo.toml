@@ -16,13 +16,14 @@ members = [
 [features]
 default = []
 timing = []
-single_ref = []
-vec-container = []
+parallel = ["rayon"]
+indexed = []
 
 [dependencies]
 ordered-float = "3.0.0"
 num-format = "0.4.0"
 thiserror = "1.0.32"
+ouroboros = "0.15.5"
 
 [profile.release]
 lto = "fat"
@@ -36,10 +37,14 @@ rand = "0.8.5"
 criterion = "0.3.6"
 pdqselect = "0.1.1"
 adqselect = "0.1.3"
-rayon = "1.5.3"
 ndarray = "0.15.6"
 approx_eq = "0.1.8"
 ndarray-npy = "0.8.1"
+rayon = "1.5.3"
+
+[dependencies.rayon]
+version = "1.5.3"
+optional = true
 
 [[bench]]
 name = "build"
