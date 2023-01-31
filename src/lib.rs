@@ -713,6 +713,10 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
         }
         Ok(self)
     }
+
+    pub fn get_data(&self) -> &[[T; D]] {
+        self.input
+    }
 }
 
 #[cfg(test)]
