@@ -1,4 +1,3 @@
-#[cfg(not(any(feature = "vec-container")))]
 use std::collections::BinaryHeap;
 
 use ordered_float::NotNan;
