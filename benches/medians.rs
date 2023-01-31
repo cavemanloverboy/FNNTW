@@ -7,6 +7,8 @@ use rand::random;
 use num_format::{Locale, ToFormattedString};
 use std::time::Instant;
 
+type T = f64;
+
 fn main() {
     bench_medians()
 }
@@ -23,7 +25,7 @@ fn bench_medians() {
 
     for _ in 0..RUNS {
         let data = [(); NUM_DATA]
-            .map(|_| [(); 3].map(|_| unsafe { NotNan::new_unchecked(random::<f64>()) }))
+            .map(|_| [(); 3].map(|_| unsafe { NotNan::new_unchecked(random::<T>()) }))
             .to_vec();
 
         let mut adq_data = data.clone();

@@ -1,6 +1,8 @@
 use approx_eq::assert_approx_eq;
 use fnntw::Tree;
 
+type T = f64;
+
 fn main() {
     // Define some data
     let data = [
@@ -27,7 +29,7 @@ fn main() {
     let (distance_squared, index, neighbor) = tree.query_nearest(&query).unwrap();
 
     // Check that the distance squared is what we expect
-    const TOLERANCE: f64 = 1e-6;
+    const TOLERANCE: T = 1e-6;
     assert_approx_eq!(distance_squared, 0.1 * 0.1, TOLERANCE);
 
     // Check that the index is what we expect

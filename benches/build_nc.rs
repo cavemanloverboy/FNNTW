@@ -3,6 +3,7 @@ use fnntw::Tree;
 use num_format::{Locale, ToFormattedString};
 use std::time::Instant;
 
+type T = f64;
 const D: usize = 3;
 
 fn tree_build_bench() {
@@ -13,7 +14,7 @@ fn tree_build_bench() {
     for _ in 0..RUNS {
         // Bench building tree
         for ndata in [5].map(|p| 10_usize.pow(p)) {
-            let data: Vec<[f64; D]> = (0..ndata)
+            let data: Vec<[T; D]> = (0..ndata)
                 .map(|_| [(); D].map(|_| rand::random()))
                 .collect();
 
