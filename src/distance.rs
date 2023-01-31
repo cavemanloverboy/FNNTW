@@ -1,11 +1,19 @@
+use std::ops::AddAssign;
+
 use ordered_float::NotNan;
 
-use crate::query_k::container::Container;
+use crate::{
+    point::{Float, Point},
+    query_k::container::Container,
+};
 
 #[inline(always)]
-pub fn squared_euclidean<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f64>; D]) -> f64 {
+pub fn squared_euclidean<T: Float, const D: usize>(a: &[NotNan<T>; D], b: &[NotNan<T>; D]) -> T
+where
+    T: AddAssign,
+{
     // Initialize accumulator var
-    let mut dist_sq: f64 = 0.0;
+    let mut dist_sq: T = T::zero();
 
     for idx in 0..D {
         // safety: made safe by const generic
@@ -18,34 +26,23 @@ pub fn squared_euclidean<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f64>;
 }
 
 #[inline(always)]
-pub fn squared_euclidean_sep<const D: usize>(a: &[NotNan<f64>; D], b: &[NotNan<f64>; D]) -> f64 {
-    // Initialize diff array
-    let mut diff = [0.0_f64; D];
-
-    for idx in 0..D {
-        // safety: made safe by const generic
-        unsafe {
-            *diff.get_unchecked_mut(idx) = *(a.get_unchecked(idx) - b.get_unchecked(idx));
-        }
-    }
-
-    diff.iter().map(|x| x * x).sum()
-}
-
-#[inline(always)]
-pub fn new_best<'i, 'o, const D: usize>(
-    query: &[NotNan<f64>; D],
-    candidate: &'i [NotNan<f64>; D],
-    current_best_dist_sq: &'o mut f64,
-    current_best_candidate: &'o mut &'i [NotNan<f64>; D],
+pub fn new_best<'t, 'i, 'o, T: Float, const D: usize>(
+    query: &[NotNan<T>; D],
+    candidate: &'i Point<'t, T, D>,
+    current_best_dist_sq: &'o mut T,
+    current_best_candidate: &'o mut &'i Point<'t, T, D>,
 ) -> bool
 where
     'i: 'o,
+    't: 'i,
 {
-    debug_assert!(*current_best_dist_sq >= 0.0, "distance must be nonnegative");
+    debug_assert!(
+        *current_best_dist_sq >= T::zero(),
+        "distance must be nonnegative"
+    );
 
     // Run usual squared_euclidean fn
-    let dist_sq: f64 = squared_euclidean(query, candidate);
+    let dist_sq: T = squared_euclidean(query, candidate.position);
 
     // Compare squared dist
     if dist_sq < *current_best_dist_sq {
@@ -59,18 +56,17 @@ where
 }
 
 #[inline(always)]
-pub(crate) fn new_best_kth<'t, 'i, 'o, const D: usize>(
-    query: &[NotNan<f64>; D],
-    candidate: &'i [NotNan<f64>; D],
-    container: &'o mut Container<'i, D>,
+pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
+    query: &[NotNan<T>; D],
+    candidate: &'i Point<'t, T, D>,
+    container: &'o mut Container<'i, T, D>,
 ) -> bool
 where
     'i: 'o,
-    't: 'i
+    't: 'i,
 {
-
     // Run usual squared_euclidean fn
-    let dist_sq: f64 = squared_euclidean(query, candidate);
+    let dist_sq: T = squared_euclidean(query, candidate.position);
 
     // Compare squared dist
     let new_best = dist_sq < *container.best_dist2();
@@ -82,22 +78,19 @@ where
     }
 }
 
-
-
 /// Calculate the distance from `query` to some space defined by `lower` and `upper`.
 ///
 /// This function constructs a point (neither in the tree nor is it `query`) that
 /// represents the point in the space defined by `lower` and `upper` that is closest
 /// to `query`. Then, it computes the squared euclidean distance between the two.
-pub fn calc_dist_sq_to_space<const D: usize>(
-    query: &[NotNan<f64>; D],
-    lower: &[NotNan<f64>; D],
-    upper: &[NotNan<f64>; D],
-) -> f64 {
-
+pub fn calc_dist_sq_to_space<T: Float, const D: usize>(
+    query: &[NotNan<T>; D],
+    lower: &[NotNan<T>; D],
+    upper: &[NotNan<T>; D],
+) -> T {
     // Initialize a point
     // safety: 0.0 is always not nan
-    let mut closest_point = [unsafe { NotNan::new_unchecked(0.0_f64) }; D];
+    let mut closest_point = [unsafe { NotNan::new_unchecked(T::zero()) }; D];
 
     for i in 0..D {
         // safety: made safe by const generic
@@ -123,16 +116,19 @@ pub fn calc_dist_sq_to_space<const D: usize>(
 ///
 /// This was innovative, but unfortunately not better...
 #[inline(always)]
-pub fn new_best_short<'a, 'b, 'c, const D: usize>(
-    query: &'c [NotNan<f64>; D],
-    candidate: &'b [NotNan<f64>; D],
-    current_best_dist_sq: &'a mut f64,
-    current_best_candidate: &'a mut &'b [NotNan<f64>; D],
+pub fn new_best_short<'a, 'b, 'c, T: Float, const D: usize>(
+    query: &'c [NotNan<T>; D],
+    candidate: &'b [NotNan<T>; D],
+    current_best_dist_sq: &'a mut T,
+    current_best_candidate: &'a mut &'b [NotNan<T>; D],
 ) -> bool {
-    debug_assert!(*current_best_dist_sq >= 0.0, "distance must be nonnegative");
+    debug_assert!(
+        *current_best_dist_sq >= T::zero(),
+        "distance must be nonnegative"
+    );
 
     // Initialize accumulator var
-    let mut dist_sq = 0.0;
+    let mut dist_sq = T::zero();
 
     for idx in 0..D {
         unsafe {
@@ -169,7 +165,6 @@ mod tests {
     #[test]
     fn test_squared_euclidean() {
         use approx_eq::assert_approx_eq;
-
 
         let a = [NotNan::new(1.0).unwrap(), NotNan::new(1.0).unwrap()];
         let b = [NotNan::new(0.0).unwrap(), NotNan::new(0.0).unwrap()];

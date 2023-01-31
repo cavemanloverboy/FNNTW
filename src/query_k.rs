@@ -1,108 +1,95 @@
-use crate::{distance::*, Node, Tree, utils::{check_point, FnntwResult}, };
+use std::fmt::Debug;
+
+use crate::{
+    distance::*,
+    point::{Float, Point},
+    utils::{check_point, FnntwResult},
+    Node, Tree,
+};
 use ordered_float::NotNan;
 
 pub(crate) mod container;
 use container::Container;
 
-impl<'t, const D: usize> Tree<'t, D> {
-
+impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     pub fn query_nearest_k<'q>(
         &'q self,
-        query: &'q [f64; D],
+        query: &'q [T; D],
         k: usize,
-    ) -> FnntwResult<Vec<(f64, u64, &'q [NotNan<f64>; D])>> {
-
+    ) -> FnntwResult<Vec<(T, u64, &'q [NotNan<T>; D])>, T> {
         // Check for valid query point
-        let query: &[NotNan<f64>; D] = check_point(query)?;
+        let query: &[NotNan<T>; D] = check_point(query)?;
 
         if let Some(ref boxsize) = self.boxsize {
-            
             // Periodic query
             Ok(self.query_nearest_k_periodic(query, k, boxsize))
         } else {
-
             // Nonperiodic query
             Ok(self.query_nearest_k_nonperiodic(query, k))
         }
     }
 
-
     fn query_nearest_k_nonperiodic<'q>(
         &'q self,
-        query: &'q [NotNan<f64>; D],
+        query: &'q [NotNan<T>; D],
         k: usize,
-    ) -> Vec<(f64, u64, &'q [NotNan<f64>; D])>
+    ) -> Vec<(T, u64, &'q [NotNan<T>; D])>
     where
         't: 'q,
     {
-
         // Get reference to the root node
-        let current_node: &Node<'t, D> = &self.root_node;
+        let current_node: &Node<'t, T, D> = &self.root_node;
 
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-        // and distance to their associated space in form of (&usize, f64), where usize is
+        // and distance to their associated space in form of (&usize, T), where usize is
         // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
+        let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
             Vec::with_capacity(self.height_hint);
 
         // Initialize candidate container with dummy point
-        let mut container = Container::new(k.min(self.data_index.len()));
-        container.push((std::f64::MAX, current_node.stem_position()));
+        let mut container = Container::new(k.min(self.data.len()));
+        container.push((T::max_value(), current_node.stem()));
 
         // Recurse down (and then up and down) the stem
-        self.check_stem_k(
-            query,
-            current_node,
-            &mut container,
-            &mut points_to_check,
-        );
+        self.check_stem_k(query, current_node, &mut container, &mut points_to_check);
 
-
-        container.index(&self.data_index)
+        container.index()
     }
 
     fn query_nearest_k_periodic<'q, 'i>(
         &'q self,
-        query: &'q [NotNan<f64>; D],
+        query: &'q [NotNan<T>; D],
         k: usize,
-        boxsize: &[NotNan<f64>; D],
-    ) -> Vec<(f64, u64, &'i [NotNan<f64>; D])>
+        boxsize: &[NotNan<T>; D],
+    ) -> Vec<(T, u64, &'i [NotNan<T>; D])>
     where
         'q: 'i,
         't: 'q,
     {
-
         // First get real image result
-        let mut real_image_container: Container<D> = {
-
+        let mut real_image_container: Container<T, D> = {
             // Get reference to the root node
-            let current_node: &Node<'t, D> = &self.root_node;
+            let current_node: &Node<'t, T, D> = &self.root_node;
 
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, f64), where usize is
+            // and distance to their associated space in form of (&usize, T), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
+            let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
                 Vec::with_capacity(self.height_hint);
 
             // Initialize candidate container with dummy point
-            let mut container = Container::new(k.min(self.data_index.len()));
-            container.push((std::f64::MAX, current_node.stem_position()));
+            let mut container = Container::new(k.min(self.data.len()));
+            container.push((T::max_value(), current_node.stem()));
 
             // Recurse down (and then up and down) the stem
-            self.check_stem_k(
-                query,
-                current_node,
-                &mut container,
-                &mut points_to_check,
-            );
+            self.check_stem_k(query, current_node, &mut container, &mut points_to_check);
 
             container
         };
 
         // Find closest dist2 to every side
-        let mut closest_side_dist2 = [0.0_f64; D];
+        let mut closest_side_dist2 = [T::zero(); D];
         for side in 0..D {
-
             // Do a single index here. This is equal to distance to lower side
             // safety: made safe by const generic
             let query_component = unsafe { query.get_unchecked(side) };
@@ -112,7 +99,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             let upper = unsafe { boxsize.get_unchecked(side) } - query_component;
 
             // !negative includes zero
-            debug_assert!(!upper.is_sign_negative()); 
+            debug_assert!(!upper.is_sign_negative());
             debug_assert!(!query_component.is_sign_negative());
 
             // Choose lesser of two and then square
@@ -122,37 +109,35 @@ impl<'t, const D: usize> Tree<'t, D> {
         // Find which images we need to check.
         // Initialize vector with real image (which we will remove later)
         let best_real_dist2 = real_image_container.best_dist2();
-        let mut images_to_check = Vec::with_capacity(2_usize.pow(D as u32)-1);
+        let mut images_to_check = Vec::with_capacity(2_usize.pow(D as u32) - 1);
         for image in 1..2_usize.pow(D as u32) {
-            
             // Closest image in the form of bool array
-            let closest_image = (0..D)
-                .map(|idx| ((image / 2_usize.pow(idx as u32)) % 2) == 1);
+            let closest_image = (0..D).map(|idx| ((image / 2_usize.pow(idx as u32)) % 2) == 1);
 
             // Find distance to corresponding side, edge, vertex or other higher dimensional equivalent
-            let dist_to_side_edge_or_other: f64 = closest_image
+            let dist_to_side_edge_or_other: T = closest_image
                 .clone()
                 .enumerate()
-                .flat_map(|(side, flag)| if flag {
-                    
-                    // Get minimum of dist2 to lower and upper side
-                    // safety: made safe by const generic
-                    Some( unsafe { closest_side_dist2.get_unchecked(side) } )
-                } else { None })
-                .fold(0.0, |acc, x| acc + x);
+                .flat_map(|(side, flag)| {
+                    if flag {
+                        // Get minimum of dist2 to lower and upper side
+                        // safety: made safe by const generic
+                        Some(unsafe { closest_side_dist2.get_unchecked(side) })
+                    } else {
+                        None
+                    }
+                })
+                .fold(T::zero(), |acc, x| acc + *x);
 
             if dist_to_side_edge_or_other < *best_real_dist2 {
-
                 let mut image_to_check = query.clone();
-                
-                for (idx, flag) in closest_image.enumerate() {
 
+                for (idx, flag) in closest_image.enumerate() {
                     // If moving image along this dimension
                     if flag {
-
                         // Do a single index here. This is equal to distance to lower side
                         // safety: made safe by const generic
-                        let query_component: &NotNan<f64> =  unsafe { query.get_unchecked(idx) };
+                        let query_component: &NotNan<T> = unsafe { query.get_unchecked(idx) };
 
                         // Single index here as well
                         // safety: made safe by const generic
@@ -160,15 +145,16 @@ impl<'t, const D: usize> Tree<'t, D> {
 
                         // safety: made safe by const generic
                         unsafe {
-                            if *query_component < boxsize_component / 2.0 {
+                            if *query_component < boxsize_component / T::from(2.0).unwrap() {
                                 // Add if in lower half of box
-                                *image_to_check.get_unchecked_mut(idx) = query_component + boxsize_component
+                                *image_to_check.get_unchecked_mut(idx) =
+                                    query_component + boxsize_component
                             } else {
                                 // Subtract if in upper half of box
-                                *image_to_check.get_unchecked_mut(idx) = query_component - boxsize_component
+                                *image_to_check.get_unchecked_mut(idx) =
+                                    query_component - boxsize_component
                             }
                         }
-                        
                     }
                 }
 
@@ -178,11 +164,10 @@ impl<'t, const D: usize> Tree<'t, D> {
 
         // Then check all images we need to check
         for image in images_to_check {
-
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, f64), where usize is
+            // and distance to their associated space in form of (&usize, T), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            let mut points_to_check: Vec<(&usize, &[NotNan<f64>; D], f64)> =
+            let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
                 Vec::with_capacity(self.height_hint);
 
             // Get image result
@@ -194,7 +179,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             );
         }
 
-        real_image_container.index(&self.data_index)
+        real_image_container.index()
     }
 
     #[inline(always)]
@@ -203,12 +188,12 @@ impl<'t, const D: usize> Tree<'t, D> {
     /// as we go along
     fn check_child_k<'i, 'o>(
         &'i self,
-        query: &'o [NotNan<f64>; D],
+        query: &'o [NotNan<T>; D],
         sibling: &usize,
         // check's the parent of the sibling (also our parent)
-        stem_position: &'i [NotNan<f64>; D],
-        container: &'o mut Container<'i, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i [NotNan<f64>; D], f64)>,
+        stem: &'i Point<'t, T, D>,
+        container: &'o mut Container<'i, T, D>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -218,28 +203,15 @@ impl<'t, const D: usize> Tree<'t, D> {
         match sibling {
             // Sibling is a leaf
             Node::Leaf { points, .. } => {
-                // the stem_position here is the position of the parent
-                self.check_parent_k(
-                    query,
-                    stem_position,
-                    container
-                );
-                self.check_leaf_k(query, points, container)
+                // the stem here is the parent
+                self.check_parent_k(query, stem, container);
+                self.check_leaf_k(query, points.into_iter(), container)
             }
 
             // Sibling is a parent (e.g. for unbalanced tree)
             Node::Stem { .. } => {
-                self.check_parent_k(
-                    query,
-                    stem_position,
-                    container
-                );
-                self.check_stem_k(
-                    query,
-                    sibling,
-                    container,
-                    points_to_check,
-                )
+                self.check_parent_k(query, stem, container);
+                self.check_stem_k(query, sibling, container, points_to_check)
             }
         }
     }
@@ -247,19 +219,16 @@ impl<'t, const D: usize> Tree<'t, D> {
     #[inline(always)]
     fn check_leaf_k<'i, 'o>(
         &self,
-        query: &'o [NotNan<f64>; D],
-        leaf_points: impl IntoIterator<Item = &'o &'i [NotNan<f64>; D]>,
-        container: &'o mut Container<'i, D>,
+        query: &'o [NotNan<T>; D],
+        leaf_points: impl IntoIterator<Item = &'i Point<'t, T, D>>,
+        container: &'o mut Container<'i, T, D>,
     ) where
         'i: 'o,
+        't: 'i,
     {
         // Check all points in leaf
         for candidate in leaf_points.into_iter() {
-            new_best_kth(
-                query,
-                candidate,
-                container
-            );
+            new_best_kth(query, candidate, container);
         }
     }
 
@@ -267,10 +236,10 @@ impl<'t, const D: usize> Tree<'t, D> {
     #[inline(always)]
     fn check_stem_k<'i, 'o>(
         &'i self,
-        query: &'o [NotNan<f64>; D],
-        stem: &'i Node<'t, D>,
-        container: &'o mut Container<'i, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i [NotNan<f64>; D], f64)>,
+        query: &'o [NotNan<T>; D],
+        stem: &'i Node<'t, T, D>,
+        container: &'o mut Container<'i, T, D>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -323,23 +292,13 @@ impl<'t, const D: usize> Tree<'t, D> {
         }
 
         // We are now at a leaf; check it
-        self.check_leaf_k(
-            query,
-            current_node.iter(),
-            container
-        );
+        self.check_leaf_k(query, current_node.iter(), container);
 
         // Now we empty out the queue
         while let Some((sibling, parent, dist_sq_to_space)) = points_to_check.pop() {
             let better_dist2 = dist_sq_to_space < *container.best_dist2();
             if better_dist2 {
-                self.check_child_k(
-                    query,
-                    sibling,
-                    parent,
-                    container,
-                    points_to_check,
-                );
+                self.check_child_k(query, sibling, parent, container, points_to_check);
             }
         }
     }
@@ -347,34 +306,13 @@ impl<'t, const D: usize> Tree<'t, D> {
     #[inline(always)]
     fn check_parent_k<'i, 'o>(
         &self,
-        query: &[NotNan<f64>; D],
-        stem_position: &'i [NotNan<f64>; D],
-        container: &'o mut Container<'i, D>,
+        query: &[NotNan<T>; D],
+        stem: &'i Point<'t, T, D>,
+        container: &'o mut Container<'i, T, D>,
     ) where
         'i: 'o,
         't: 'i,
     {
-        new_best_kth(
-            query,
-            stem_position,
-            container,
-        );
+        new_best_kth(query, stem, container);
     }
-
-    // fn check_point(&self, boxsize: &[NotNan<f64>; D]) -> Result<()> {
-
-    //     // Initialize flag
-    //     let mut okay = true;
-    
-    //     for length in boxsize {
-    //         if !(length.is_sign_positive() && length.is_normal()) {
-    //             okay = false; 
-    //         } else  {
-
-    //         }
-
-    //     }
-    
-    //     okay
-    // }
 }
