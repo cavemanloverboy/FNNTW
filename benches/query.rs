@@ -12,11 +12,6 @@ const QUERY: usize = 1_000_000;
 const BOXSIZE: [T; D] = [1.0; D];
 
 fn criterion_benchmark(c: &mut Criterion) {
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(12)
-        .build_global()
-        .unwrap();
-
     for ndata in [3, 4, 5].map(|p| 10_usize.pow(p)) {
         let data: Vec<[T; D]> = (0..ndata)
             .map(|_| [(); D].map(|_| rand::random()))
