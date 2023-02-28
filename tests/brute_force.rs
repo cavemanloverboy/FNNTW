@@ -35,7 +35,7 @@ fn test_brute_force() -> Result<(), Box<dyn Error>> {
 
     // Brute force check results
     for (i, q) in query.iter().enumerate() {
-        assert_eq!(results[i], brute_force(q, &data))
+        assert_eq!(results[i], brute_force(q, &data), "u64 max is {}", u64::MAX)
     }
 
     Ok(())

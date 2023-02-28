@@ -28,9 +28,9 @@ where
 #[inline(always)]
 pub fn new_best<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
-    candidate: &'i Point<'t, T, D>,
+    candidate: &'i Point<T, D>,
     current_best_dist_sq: &'o mut T,
-    current_best_candidate: &'o mut &'i Point<'t, T, D>,
+    current_best_candidate: &'o mut &'i Point<T, D>,
 ) -> bool
 where
     'i: 'o,
@@ -42,7 +42,7 @@ where
     );
 
     // Run usual squared_euclidean fn
-    let dist_sq: T = squared_euclidean(query, candidate.position);
+    let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
 
     // Compare squared dist
     if dist_sq < *current_best_dist_sq {
@@ -58,14 +58,14 @@ where
 #[inline(always)]
 pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
-    candidate: &'i Point<'t, T, D>,
+    candidate: &'i Point<T, D>,
     container: &'o mut Container<'i, T, D>,
 ) where
     'i: 'o,
     't: 'i,
 {
     // Run usual squared_euclidean fn
-    let dist_sq: T = squared_euclidean(query, candidate.position);
+    let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
 
     // Compare squared dist
     let new_best = dist_sq <= *container.best_dist2();

@@ -2,7 +2,7 @@ use fnntw::Tree;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-type T = f32;
+type T = f64;
 const D: usize = 3;
 
 fn criterion_benchmark(c: &mut Criterion) {

@@ -11,7 +11,7 @@ use crate::{
 /// Using this struct to impl PartialOrd for T.
 #[repr(transparent)]
 #[derive(Clone)]
-pub(crate) struct Candidate<'t, T: Float, const D: usize>((T, &'t Point<'t, T, D>));
+pub(crate) struct Candidate<'t, T: Float, const D: usize>((T, &'t Point<T, D>));
 
 #[derive(Clone)]
 pub struct Container<'t, T: Float, const D: usize> {
@@ -33,7 +33,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
 
     // Euclidean needs access to this one
     // The caller of this function has already done a dist2 <= max_dist2 check
-    pub(crate) fn push(&mut self, neighbor: (T, &'t Point<'t, T, D>)) {
+    pub(crate) fn push(&mut self, neighbor: (T, &'t Point<T, D>)) {
         if self.items.len() >= self.k_or_datalen {
             // If >=k elements, eject largest
             let neighbor: Candidate<T, D> = Candidate(neighbor);
@@ -53,7 +53,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
     }
 
     #[allow(unused_mut)] // if sqrt-dist2 is on, mut is not used
-    pub(super) fn index<'i>(&mut self) -> QueryKResult<'t, T, D>
+    pub(super) fn index<'i>(&mut self, start: *const [T; D]) -> QueryKResult<'t, T, D>
     where
         't: 'i,
     {
@@ -82,7 +82,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
 
             unsafe {
                 *ptrs.0.add(idx) = dist2;
-                *ptrs.1.add(idx) = neighbor.index;
+                *ptrs.1.add(idx) = neighbor.index(start);
                 #[cfg(not(feature = "no-position"))]
                 {
                     *ptrs.2.add(idx) = neighbor.position;
@@ -100,7 +100,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
     }
 
     #[allow(unused_mut)] // if sqrt-dist2 is on, mut is not used
-    pub(super) fn index_with<'i>(mut self) -> (QueryKResult<'t, T, D>, Self)
+    pub(super) fn index_with<'i>(mut self, start: *const [T; D]) -> (QueryKResult<'t, T, D>, Self)
     where
         't: 'i,
     {
@@ -129,7 +129,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
 
             unsafe {
                 *ptrs.0.add(idx) = dist2;
-                *ptrs.1.add(idx) = neighbor.index;
+                *ptrs.1.add(idx) = neighbor.index(start);
                 #[cfg(not(feature = "no-position"))]
                 {
                     *ptrs.2.add(idx) = neighbor.position;
@@ -151,6 +151,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
         distances_ptr: usize,
         indices_ptr: usize,
         query_index: usize,
+        start: *const [T; D],
     ) where
         't: 'i,
     {
@@ -169,7 +170,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
 
                 unsafe {
                     *dptr.add(query_index * self.k_or_datalen + idx) = dist2;
-                    *iptr.add(query_index * self.k_or_datalen + idx) = neighbor.index;
+                    *iptr.add(query_index * self.k_or_datalen + idx) = neighbor.index(start);
                     #[cfg(not(feature = "no-position"))]
                     {
                         *ptrs.2.add(idx) = neighbor.position;

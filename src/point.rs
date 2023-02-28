@@ -3,18 +3,37 @@ use std::{fmt::Debug, ops::AddAssign};
 use ordered_float::{Float as ExternalFloat, NotNan};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub struct Point<'t, T: Float, const D: usize> {
-    pub index: u64,
-    pub position: &'t [NotNan<T>; D],
+#[repr(transparent)]
+pub struct Point<T: Float, const D: usize> {
+    pub(crate) ptr: *const [NotNan<T>; D],
 }
 
-impl<'t, T: Float, const D: usize> Point<'t, T, D> {
-    /// SAFETY: it is the callers responsibility to ensure i < D
-    pub unsafe fn get_unchecked(&self, i: usize) -> &'t NotNan<T> {
-        self.position.get_unchecked(i)
+impl<T: Float, const D: usize> Point<T, D> {
+    /// SAFETY: This is only used for data which has been checked for correct dimensionality
+    /// and which lives for 't
+    #[inline(always)]
+    pub(crate) unsafe fn get_unchecked<'t>(&self, i: usize) -> &'t NotNan<T> {
+        (*self.ptr).get_unchecked(i)
+    }
+
+    /// SAFETY: This is only used for data which has been checked for correct dimensionality
+    /// and which lives for 't
+    #[inline(always)]
+    pub(crate) unsafe fn position<'t>(&self) -> &[NotNan<T>; D] {
+        &*self.ptr
+    }
+
+    /// SAFETY: This is only used for data which has been checked for correct dimensionality
+    /// and which lives for 't. `start` must be the start of the data vector
+    #[inline(always)]
+    pub(crate) unsafe fn index<'t>(&self, start: *const [T; D]) -> u64 {
+        core::intrinsics::ptr_offset_from_unsigned(self.ptr, std::mem::transmute(start)) as u64
     }
 }
 
 pub trait Float: ExternalFloat + Debug + Send + Sync + AddAssign {}
 
 impl<T: ExternalFloat + Debug + Send + Sync + AddAssign> Float for T {}
+
+unsafe impl<T: Float, const D: usize> Send for Point<T, D> {}
+unsafe impl<T: Float, const D: usize> Sync for Point<T, D> {}

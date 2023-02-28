@@ -47,34 +47,34 @@ fn criterion_benchmark(c: &mut Criterion) {
                 drop(v)
             })
         });
-        group.bench_function(format!("log2(k)={log2k} with nonpbc"), |b| {
-            let (tx, rx) = crossbeam_channel::bounded(rayon::max_num_threads());
+        // group.bench_function(format!("log2(k)={log2k} with nonpbc"), |b| {
+        //     let (tx, rx) = crossbeam_channel::bounded(rayon::max_num_threads());
 
-            b.iter(|| {
-                let v: Vec<_> = black_box(&query)
-                    .par_iter()
-                    .map_with(black_box(&tree), |t, q| {
-                        let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
-                            (
-                                Container::<T, D>::new(2_usize.pow(log2k)),
-                                Vec::<(&usize, &Point<T, D>, T)>::with_capacity(tree.height_hint),
-                            )
-                        });
-                        let results = black_box(t.query_nearest_k_with(
-                            black_box(q),
-                            black_box(2_usize.pow(log2k)),
-                            // SAFETY: we are transmuting the reference lifetimes of empty vectors,
-                            unsafe { std::mem::transmute(&mut container) },
-                            unsafe { std::mem::transmute(&mut point_vec) },
-                        ))
-                        .unwrap();
-                        drop(results);
-                        tx.send((container, point_vec)).unwrap();
-                    })
-                    .collect();
-                drop(v)
-            })
-        });
+        //     b.iter(|| {
+        //         let v: Vec<_> = black_box(&query)
+        //             .par_iter()
+        //             .map_with(black_box(&tree), |t, q| {
+        //                 let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
+        //                     (
+        //                         Container::<T, D>::new(2_usize.pow(log2k)),
+        //                         Vec::<(&usize, &Point<T, D>, T)>::with_capacity(tree.height_hint),
+        //                     )
+        //                 });
+        //                 let results = black_box(t.query_nearest_k_with(
+        //                     black_box(q),
+        //                     black_box(2_usize.pow(log2k)),
+        //                     // SAFETY: we are transmuting the reference lifetimes of empty vectors,
+        //                     unsafe { std::mem::transmute(&mut container) },
+        //                     unsafe { std::mem::transmute(&mut point_vec) },
+        //                 ))
+        //                 .unwrap();
+        //                 drop(results);
+        //                 tx.send((container, point_vec)).unwrap();
+        //             })
+        //             .collect();
+        //         drop(v)
+        //     })
+        // });
         // group.bench_function(format!("log2(k)={log2k} parallel nonpbc"), |b| {
         //     b.iter(|| {
         //         let v = tree

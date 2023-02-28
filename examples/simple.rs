@@ -33,10 +33,13 @@ fn main() {
 
     // Check that the distance squared is what we expect
     const TOLERANCE: T = 1e-6;
+    #[cfg(not(feature = "sqrt-dist2"))]
     assert_approx_eq!(distance_squared, 0.1 * 0.1, TOLERANCE);
+    #[cfg(feature = "sqrt-dist2")]
+    assert_approx_eq!(distance_squared, 0.1, TOLERANCE);
 
     // Check that the index is what we expect
-    assert_eq!(index, 0);
+    assert_eq!(index, 0, "u64 max is {}", u64::MAX);
 
     // Check that the neighbor is the one we expect
     #[cfg(not(feature = "no-position"))]

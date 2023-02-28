@@ -18,54 +18,13 @@ pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>, Vec<[NotNan<T>
 
 pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
     data: &'d [[T; D]],
-) -> FnntwResult<Vec<Point<'d, T, D>>, T> {
-    // Cheap checks first
-    // Nonzero Length
-    if data.len() == 0 {
-        return Err(FnntwError::ZeroLengthInputData);
-    }
-
-    if data.len() < 1_000_000 {
-        return Ok(data
-            .into_iter()
-            .zip(0..)
-            .map(|(data_point, index)| -> FnntwResult<Point<'d, T, D>, T> {
-                // Do check on point
-                let _ = check_point(data_point)?;
-
-                // After all checks are performed, bitwise move the Ts into the same-size wrapper type
-                // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
-                let position = unsafe { std::mem::transmute(data_point) };
-
-                // Index point
-                Ok(Point { position, index })
-            })
-            .collect::<FnntwResult<Vec<Point<'d, T, D>>, T>>()?);
-    } else {
-        return Ok(data
-            .into_par_iter()
-            .enumerate()
-            .map(|(index, data_point)| -> FnntwResult<Point<'d, T, D>, T> {
-                // Do check on point
-                let _ = check_point(data_point)?;
-
-                // After all checks are performed, bitwise move the Ts into the same-size wrapper type
-                // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
-                let position = unsafe { std::mem::transmute(data_point) };
-
-                // Index point
-                Ok(Point {
-                    position,
-                    index: index as u64,
-                })
-            })
-            .collect::<FnntwResult<Vec<Point<'d, T, D>>, T>>()?);
-    }
+) -> FnntwResult<(), T> {
+    data.into_par_iter().try_for_each(check_point)
 }
 
 /// Note: by explicity annotating lifetimes, we are ensuring that transmute does not modify lifetimes
 /// and simply bitwise moves from T to NotNan<T> after checks
-pub(crate) fn check_point<'p, T: Float + Debug, const D: usize>(
+pub(crate) fn check_point_return<'p, T: Float + Debug, const D: usize>(
     point: &'p [T; D],
 ) -> FnntwResult<&'p [NotNan<T>; D], T> {
     for component in point {
@@ -80,6 +39,22 @@ pub(crate) fn check_point<'p, T: Float + Debug, const D: usize>(
     // After all checks are formed, bitwise move the Ts into the same-size wrapper type
     // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
     Ok(unsafe { std::mem::transmute(point) })
+}
+
+/// Note: by explicity annotating lifetimes, we are ensuring that transmute does not modify lifetimes
+/// and simply bitwise moves from T to NotNan<T> after checks
+pub(crate) fn check_point<'p, T: Float + Debug, const D: usize>(
+    point: &'p [T; D],
+) -> FnntwResult<(), T> {
+    for component in point {
+        // Check if invalid
+        if component.is_nan() || component.is_infinite() {
+            return Err(FnntwError::InvalidInputData {
+                data_point: Box::from(*point),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -110,14 +85,6 @@ pub(crate) fn process_result<'t, T: Float, const D: usize>(
     mut result: QueryResult<'t, T, D>,
 ) -> QueryResult<'t, T, D> {
     result.0 = result.0.sqrt();
-    result
-}
-
-#[cfg(not(feature = "sqrt-dist2"))]
-#[inline(always)]
-pub(crate) fn process_result<'t, T: Float, const D: usize>(
-    result: QueryResult<'t, T, D>,
-) -> QueryResult<'t, T, D> {
     result
 }
 

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::{
     distance::*,
     point::{Float, Point},
-    utils::{check_point, FnntwResult, QueryKResult},
+    utils::{check_point_return, FnntwResult, QueryKResult},
     Node, Tree,
 };
 use ordered_float::NotNan;
@@ -11,7 +11,7 @@ use ordered_float::NotNan;
 pub mod container;
 pub mod parallel;
 pub mod parallel_with;
-pub mod with;
+// pub mod with;
 use container::Container;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
@@ -21,7 +21,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         k: usize,
     ) -> FnntwResult<QueryKResult<'t, T, D>, T> {
         // Check for valid query point
-        let query: &[NotNan<T>; D] = check_point(query)?;
+        let query: &[NotNan<T>; D] = check_point_return(query)?;
 
         if let Some(ref boxsize) = self.boxsize {
             // Periodic query
@@ -42,22 +42,22 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     {
         // Get reference to the root node
 
-        let current_node: &Node<'t, T, D> = &self.root_node;
+        let current_node: &Node<T, D> = &self.root_node;
 
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
         // and distance to their associated space in form of (&usize, T), where usize is
         // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+        let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
             Vec::with_capacity(self.height_hint);
 
         // Initialize candidate container with dummy point
-        let mut container = Container::new(k.min(self.data.len()));
+        let mut container = Container::new(k.min(self.input.len()));
         container.push((T::max_value(), current_node.stem()));
 
         // Recurse down (and then up and down) the stem
         self.check_stem_k(query, current_node, &mut container, &mut points_to_check);
 
-        container.index()
+        container.index(self.data_ptr())
     }
 
     fn query_nearest_k_periodic<'q, 'i>(
@@ -72,16 +72,16 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
         // and distance to their associated space in form of (&usize, T), where usize is
         // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+        let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
             Vec::with_capacity(self.height_hint);
 
         // First get real image result
         let mut real_image_container: Container<T, D> = {
             // Get reference to the root node
-            let current_node: &Node<'t, T, D> = &self.root_node;
+            let current_node: &Node<T, D> = &self.root_node;
 
             // Initialize candidate container with dummy point
-            let mut container = Container::new(k.min(self.data.len()));
+            let mut container = Container::new(k.min(self.input.len()));
             container.push((T::max_value(), current_node.stem()));
 
             // Recurse down (and then up and down) the stem
@@ -170,7 +170,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
             // and distance to their associated space in form of (&usize, T), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            // let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+            // let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
             //     Vec::with_capacity(self.height_hint);
 
             // Get image result
@@ -182,7 +182,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             );
         }
 
-        real_image_container.index()
+        real_image_container.index(self.data_ptr())
     }
 
     #[inline(always)]
@@ -194,9 +194,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         query: &'o [NotNan<T>; D],
         sibling: &usize,
         // check's the parent of the sibling (also our parent)
-        stem: &'i Point<'t, T, D>,
+        stem: &'i Point<T, D>,
         container: &'o mut Container<'i, T, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -223,7 +223,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     fn check_leaf_k<'i, 'o>(
         &self,
         query: &'o [NotNan<T>; D],
-        leaf_points: impl IntoIterator<Item = &'i Point<'t, T, D>>,
+        leaf_points: impl IntoIterator<Item = &'i Point<T, D>>,
         container: &'o mut Container<'i, T, D>,
     ) where
         'i: 'o,
@@ -240,9 +240,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     fn check_stem_k<'i, 'o>(
         &'i self,
         query: &'o [NotNan<T>; D],
-        stem: &'i Node<'t, T, D>,
+        stem: &'i Node<T, D>,
         container: &'o mut Container<'i, T, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -310,7 +310,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     fn check_parent_k<'i, 'o>(
         &self,
         query: &[NotNan<T>; D],
-        stem: &'i Point<'t, T, D>,
+        stem: &'i Point<T, D>,
         container: &'o mut Container<'i, T, D>,
     ) where
         'i: 'o,

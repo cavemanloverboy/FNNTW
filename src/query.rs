@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::{
     distance::*,
     point::{Float, Point},
-    utils::{check_point, process_result, FnntwResult, QueryResult},
+    utils::{check_point_return, process_result, FnntwResult, QueryResult},
     Node, Tree,
 };
 use likely_stable::unlikely;
@@ -12,7 +12,7 @@ use ordered_float::NotNan;
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     pub fn query_nearest<'q>(&'q self, query: &[T; D]) -> FnntwResult<QueryResult<'t, T, D>, T> {
         // Check for valid query point
-        let query: &[NotNan<T>; D] = check_point(query)?;
+        let query: &[NotNan<T>; D] = check_point_return(query)?;
 
         if let Some(ref boxsize) = self.boxsize {
             // Periodic query
@@ -32,16 +32,16 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     #[inline(always)]
     fn query_nearest_nonperiodic<'q>(&'q self, query: &[NotNan<T>; D]) -> QueryResult<'t, T, D> {
         // Get reference to the root node
-        let current_node: &Node<'t, T, D> = &self.root_node;
+        let current_node: &Node<T, D> = &self.root_node;
 
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
         // and distance to their associated space in form of (&usize, T), where usize is
         // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+        let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
             Vec::with_capacity(self.height_hint);
 
         let mut current_best_dist_sq = T::max_value();
-        let mut current_best_neighbor: &'q Point<'t, T, D> = current_node.stem();
+        let mut current_best_neighbor: &'q Point<T, D> = current_node.stem();
 
         // Recurse down (and then up and down) the stem
         self.check_stem(
@@ -54,7 +54,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         (
             current_best_dist_sq,
-            current_best_neighbor.index,
+            unsafe { current_best_neighbor.index(self.data_ptr()) },
             #[cfg(not(feature = "no-position"))]
             current_best_neighbor.position,
         )
@@ -188,10 +188,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         query: &[NotNan<T>; D],
         sibling: &usize,
         // check's the parent of the sibling (also our parent)
-        stem: &'i Point<'t, T, D>,
+        stem: &'i Point<T, D>,
         current_best_dist_sq: &'o mut T,
-        current_best_neighbor: &'o mut &'i Point<'t, T, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
+        current_best_neighbor: &'o mut &'i Point<T, D>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -225,9 +225,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         &self,
         query: &'b [NotNan<T>; D],
         // leaf_points: &'t Vec<&'t [NotNan<T>; D]>,
-        leaf_points: impl IntoIterator<Item = &'a Point<'t, T, D>>,
+        leaf_points: impl IntoIterator<Item = &'a Point<T, D>>,
         current_best_dist_sq: &'b mut T,
-        current_best_neighbor: &'b mut &'a Point<'t, T, D>,
+        current_best_neighbor: &'b mut &'a Point<T, D>,
     ) where
         'a: 'b,
         't: 'a,
@@ -248,10 +248,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     fn check_stem<'i, 'o>(
         &'i self,
         query: &[NotNan<T>; D],
-        stem: &'i Node<'t, T, D>,
+        stem: &'i Node<T, D>,
         current_best_dist_sq: &'o mut T,
-        current_best_neighbor: &'o mut &'i Point<'t, T, D>,
-        points_to_check: &'o mut Vec<(&'i usize, &'i Point<'t, T, D>, T)>,
+        current_best_neighbor: &'o mut &'i Point<T, D>,
+        points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
     ) where
         'i: 'o,
         't: 'i,
@@ -330,9 +330,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     fn check_parent<'i, 'o>(
         &self,
         query: &[NotNan<T>; D],
-        stem: &'i Point<'t, T, D>,
+        stem: &'i Point<T, D>,
         current_best_dist_sq: &'o mut T,
-        current_best_neighbor: &'o mut &'i Point<'t, T, D>,
+        current_best_neighbor: &'o mut &'i Point<T, D>,
     ) where
         'i: 'o,
         't: 'i,
