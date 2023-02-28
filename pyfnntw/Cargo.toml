@@ -19,6 +19,7 @@ ouroboros = "0.15.2"
 numpy = "0.16.2"
 rayon = "1.5.3"
 ndarray = { version = "0.15.6", features = ["rayon"] }
+concat-idents = "1.1.4"
 
 [profile.release]
 lto = "fat"
