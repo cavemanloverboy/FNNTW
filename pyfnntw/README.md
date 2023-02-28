@@ -25,7 +25,7 @@ tree1 = pyfnntw.Tree(data, 32, 1)
 (_, ids1) = tree1.query(query)
 
 # Build and query the scipy tree
-tree2 = pyfnntw.Tree(data, 32, 1)
+tree2 = Tree(data, 32)
 (_, ids2) = tree2.query(query)
 
 if np.all(ids1 == ids2):

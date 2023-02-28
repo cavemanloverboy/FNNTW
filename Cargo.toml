@@ -1,9 +1,9 @@
 [package]
 name = "fnntw"
-version = "0.2.0"
+version = "0.3.0"
 description = "FNNTW: Fastest Nearest Neighbor (in the) West. A fast kdtree/kNN library."
 authors = ["Cavey Cool <caveycool@gmail.com>"]
-repository = "https://github.com/cavemanloverboy/fnstw"
+repository = "https://github.com/cavemanloverboy/fnntw"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 
@@ -14,16 +14,23 @@ members = [
 ]
 
 [features]
-default = []
+default = ["parallel", "no-position", "sqrt-dist2"]
 timing = []
 parallel = ["rayon"]
-indexed = []
+sqrt-dist2 = []
+no-position = []
 
 [dependencies]
 ordered-float = "3.0.0"
 num-format = "0.4.0"
 thiserror = "1.0.32"
 ouroboros = "0.15.5"
+permutation = "0.4.1"
+crossbeam-channel = "0.5.6"
+likely_stable = "0.1.2"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+jemallocator = "0.5.0"
 
 [profile.release]
 lto = "fat"
@@ -41,6 +48,9 @@ ndarray = "0.15.6"
 approx_eq = "0.1.8"
 ndarray-npy = "0.8.1"
 rayon = "1.5.3"
+floydrivest = "0.2.4"
+order-stat = "0.1.3"
+kth = "0.1.0"
 
 [dependencies.rayon]
 version = "1.5.3"

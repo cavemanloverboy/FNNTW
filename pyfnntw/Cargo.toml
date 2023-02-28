@@ -13,7 +13,7 @@ name = "pyfnntw"
 crate-type = ["cdylib"]
 
 [dependencies]
-fnntw = "0.1.3"
+fnntw = { path = "../", features = ["no-position", "sqrt-dist2"]}
 pyo3 = { version = "0.16.5", features = ["extension-module"] }
 ouroboros = "0.15.2"
 numpy = "0.16.2"

@@ -3,8 +3,8 @@ import numpy as np;
 from scipy.spatial import cKDTree as Tree
 from time import time
 
-ND = 10**5
-NQ = 10**6
+ND = 10**3
+NQ = 10**3
 RUNS = 10
 TRIALS = 10
 WARMUP = 5
@@ -14,7 +14,7 @@ data = np.random.uniform(size=(ND, 3))
 query = np.random.uniform(size=(NQ, 3))
 
 # Build and query the pynntw tree
-tree1 = pyfnntw.Tree(data, 32, 1)
+tree1 = pyfnntw.Treef64(data, 32, 1)
 (_, ids1) = tree1.query(query)
 
 # Build and query the scipy tree
