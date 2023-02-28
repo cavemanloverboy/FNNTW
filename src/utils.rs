@@ -1,11 +1,20 @@
 use std::fmt::Debug;
 
+use crate::point::{Float, Point};
 use ordered_float::NotNan;
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 
-use crate::point::{Float, Point};
-
 pub type FnntwResult<R, T> = Result<R, FnntwError<T>>;
+#[cfg(feature = "no-position")]
+pub type QueryResult<'t, T, const D: usize> = (T, u64);
+#[cfg(not(feature = "no-position"))]
+pub type QueryResult<'t, T, const D: usize> = (T, u64, &'t [NotNan<T>; D]);
+
+#[cfg(feature = "no-position")]
+pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>);
+#[cfg(not(feature = "no-position"))]
+pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>, Vec<[NotNan<T>; D]>);
 
 pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
     data: &'d [[T; D]],
@@ -16,39 +25,42 @@ pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
         return Err(FnntwError::ZeroLengthInputData);
     }
 
-    #[cfg(not(feature = "parallel"))]
-    return Ok(data
-        .into_iter()
-        .zip(0..)
-        .map(|(data_point, index)| -> FnntwResult<Point<'d, T, D>, T> {
-            // Do check on point
-            let _ = check_point(data_point)?;
+    if data.len() < 1_000_000 {
+        return Ok(data
+            .into_iter()
+            .zip(0..)
+            .map(|(data_point, index)| -> FnntwResult<Point<'d, T, D>, T> {
+                // Do check on point
+                let _ = check_point(data_point)?;
 
-            // After all checks are performed, bitwise move the Ts into the same-size wrapper type
-            // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
-            let position = unsafe { std::mem::transmute(data_point) };
+                // After all checks are performed, bitwise move the Ts into the same-size wrapper type
+                // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
+                let position = unsafe { std::mem::transmute(data_point) };
 
-            // Index point
-            Ok(Point { position, index })
-        })
-        .collect::<FnntwResult<Vec<Point<'d, T, D>>, T>>()?);
+                // Index point
+                Ok(Point { position, index })
+            })
+            .collect::<FnntwResult<Vec<Point<'d, T, D>>, T>>()?);
+    } else {
+        return Ok(data
+            .into_par_iter()
+            .enumerate()
+            .map(|(index, data_point)| -> FnntwResult<Point<'d, T, D>, T> {
+                // Do check on point
+                let _ = check_point(data_point)?;
 
-    #[cfg(feature = "parallel")]
-    return Ok(data
-        .into_par_iter()
-        .enumerate()
-        .map(|(index, data_point)| -> Result<Point<'d, T, D>> {
-            // Do check on point
-            let _ = check_point(data_point)?;
+                // After all checks are performed, bitwise move the Ts into the same-size wrapper type
+                // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
+                let position = unsafe { std::mem::transmute(data_point) };
 
-            // After all checks are performed, bitwise move the Ts into the same-size wrapper type
-            // safety: just checked all the things that NotNan needs, and lifetime is not being transmuted
-            let position = unsafe { std::mem::transmute(data_point) };
-
-            // Index point
-            Ok(Point { position, index })
-        })
-        .collect::<Result<Vec<Point<'d, T, D>>>>()?);
+                // Index point
+                Ok(Point {
+                    position,
+                    index: index as u64,
+                })
+            })
+            .collect::<FnntwResult<Vec<Point<'d, T, D>>, T>>()?);
+    }
 }
 
 /// Note: by explicity annotating lifetimes, we are ensuring that transmute does not modify lifetimes
@@ -90,4 +102,27 @@ pub enum FnntwError<T: Float + Debug> {
              at the origin"
     )]
     NegativeDataPeriodicQuery,
+}
+
+#[cfg(feature = "sqrt-dist2")]
+#[inline(always)]
+pub(crate) fn process_result<'t, T: Float, const D: usize>(
+    mut result: QueryResult<'t, T, D>,
+) -> QueryResult<'t, T, D> {
+    result.0 = result.0.sqrt();
+    result
+}
+
+#[cfg(not(feature = "sqrt-dist2"))]
+#[inline(always)]
+pub(crate) fn process_result<'t, T: Float, const D: usize>(
+    result: QueryResult<'t, T, D>,
+) -> QueryResult<'t, T, D> {
+    result
+}
+
+#[cfg(feature = "sqrt-dist2")]
+#[inline(always)]
+pub(crate) fn process_dist2<T: Float>(dist2: &mut T) {
+    *dist2 = dist2.sqrt();
 }

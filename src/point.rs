@@ -3,7 +3,6 @@ use std::{fmt::Debug, ops::AddAssign};
 use ordered_float::{Float as ExternalFloat, NotNan};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-// TODO: should this really be copy?
 pub struct Point<'t, T: Float, const D: usize> {
     pub index: u64,
     pub position: &'t [NotNan<T>; D],

@@ -3,12 +3,15 @@ use std::fmt::Debug;
 use crate::{
     distance::*,
     point::{Float, Point},
-    utils::{check_point, FnntwResult},
+    utils::{check_point, FnntwResult, QueryKResult},
     Node, Tree,
 };
 use ordered_float::NotNan;
 
-pub(crate) mod container;
+pub mod container;
+pub mod parallel;
+pub mod parallel_with;
+pub mod with;
 use container::Container;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
@@ -16,7 +19,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         &'q self,
         query: &'q [T; D],
         k: usize,
-    ) -> FnntwResult<Vec<(T, u64, &'q [NotNan<T>; D])>, T> {
+    ) -> FnntwResult<QueryKResult<'t, T, D>, T> {
         // Check for valid query point
         let query: &[NotNan<T>; D] = check_point(query)?;
 
@@ -33,11 +36,12 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         &'q self,
         query: &'q [NotNan<T>; D],
         k: usize,
-    ) -> Vec<(T, u64, &'q [NotNan<T>; D])>
+    ) -> QueryKResult<'t, T, D>
     where
         't: 'q,
     {
         // Get reference to the root node
+
         let current_node: &Node<'t, T, D> = &self.root_node;
 
         // Ledger with info about nodes we've touched, namely the parent and sibling nodes
@@ -61,21 +65,20 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         query: &'q [NotNan<T>; D],
         k: usize,
         boxsize: &[NotNan<T>; D],
-    ) -> Vec<(T, u64, &'i [NotNan<T>; D])>
+    ) -> QueryKResult<'t, T, D>
     where
-        'q: 'i,
         't: 'q,
     {
+        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
+        // and distance to their associated space in form of (&usize, T), where usize is
+        // the index inside of self.nodes. The root node is checked at the end.
+        let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+            Vec::with_capacity(self.height_hint);
+
         // First get real image result
         let mut real_image_container: Container<T, D> = {
             // Get reference to the root node
             let current_node: &Node<'t, T, D> = &self.root_node;
-
-            // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, T), where usize is
-            // the index inside of self.nodes. The root node is checked at the end.
-            let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
-                Vec::with_capacity(self.height_hint);
 
             // Initialize candidate container with dummy point
             let mut container = Container::new(k.min(self.data.len()));
@@ -112,7 +115,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let mut images_to_check = Vec::with_capacity(2_usize.pow(D as u32) - 1);
         for image in 1..2_usize.pow(D as u32) {
             // Closest image in the form of bool array
-            let closest_image = (0..D).map(|idx| ((image / 2_usize.pow(idx as u32)) % 2) == 1);
+            let closest_image = (0..D as u32).map(|idx| ((image / 2_usize.pow(idx)) % 2) == 1);
 
             // Find distance to corresponding side, edge, vertex or other higher dimensional equivalent
             let dist_to_side_edge_or_other: T = closest_image
@@ -167,8 +170,8 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             // Ledger with info about nodes we've touched, namely the parent and sibling nodes
             // and distance to their associated space in form of (&usize, T), where usize is
             // the index inside of self.nodes. The root node is checked at the end.
-            let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
-                Vec::with_capacity(self.height_hint);
+            // let mut points_to_check: Vec<(&usize, &Point<'t, T, D>, T)> =
+            //     Vec::with_capacity(self.height_hint);
 
             // Get image result
             self.check_stem_k(
@@ -253,7 +256,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                     ref split_dim,
                     point,
                     left,
-                    ref right,
+                    right,
                     ..
                 } => {
                     // Determine left/right split

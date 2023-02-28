@@ -60,8 +60,7 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     candidate: &'i Point<'t, T, D>,
     container: &'o mut Container<'i, T, D>,
-) -> bool
-where
+) where
     'i: 'o,
     't: 'i,
 {
@@ -69,12 +68,9 @@ where
     let dist_sq: T = squared_euclidean(query, candidate.position);
 
     // Compare squared dist
-    let new_best = dist_sq < *container.best_dist2();
+    let new_best = dist_sq <= *container.best_dist2();
     if new_best {
         container.push((dist_sq, candidate));
-        true
-    } else {
-        false
     }
 }
 
@@ -83,6 +79,7 @@ where
 /// This function constructs a point (neither in the tree nor is it `query`) that
 /// represents the point in the space defined by `lower` and `upper` that is closest
 /// to `query`. Then, it computes the squared euclidean distance between the two.
+#[inline(always)]
 pub fn calc_dist_sq_to_space<T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     lower: &[NotNan<T>; D],

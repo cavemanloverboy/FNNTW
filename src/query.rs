@@ -3,34 +3,34 @@ use std::fmt::Debug;
 use crate::{
     distance::*,
     point::{Float, Point},
-    utils::{check_point, FnntwResult},
+    utils::{check_point, process_result, FnntwResult, QueryResult},
     Node, Tree,
 };
+use likely_stable::unlikely;
 use ordered_float::NotNan;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    pub fn query_nearest<'q>(
-        &'q self,
-        query: &[T; D],
-    ) -> FnntwResult<(T, u64, &'t [NotNan<T>; D]), T> {
+    pub fn query_nearest<'q>(&'q self, query: &[T; D]) -> FnntwResult<QueryResult<'t, T, D>, T> {
         // Check for valid query point
         let query: &[NotNan<T>; D] = check_point(query)?;
 
         if let Some(ref boxsize) = self.boxsize {
             // Periodic query
-            Ok(self.query_nearest_periodic(query, boxsize))
+            Ok(process_result::<'t, T, D>(
+                self.query_nearest_periodic(query, boxsize),
+            ))
         } else {
             // Non periodic query
-            Ok(self.query_nearest_nonperiodic(query))
+            Ok(process_result::<'t, T, D>(
+                self.query_nearest_nonperiodic(query),
+            ))
         }
     }
 
     /// Given a query point `query`, query the tree and return point's nearest neighbor.
     /// The value returned is (`distance_to_neighbor: T`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<T>; D]`).
-    fn query_nearest_nonperiodic<'q>(
-        &'q self,
-        query: &[NotNan<T>; D],
-    ) -> (T, u64, &'t [NotNan<T>; D]) {
+    #[inline(always)]
+    fn query_nearest_nonperiodic<'q>(&'q self, query: &[NotNan<T>; D]) -> QueryResult<'t, T, D> {
         // Get reference to the root node
         let current_node: &Node<'t, T, D> = &self.root_node;
 
@@ -55,17 +55,22 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         (
             current_best_dist_sq,
             current_best_neighbor.index,
+            #[cfg(not(feature = "no-position"))]
             current_best_neighbor.position,
         )
     }
 
+    #[inline(always)]
     fn query_nearest_periodic<'q>(
         &'q self,
         query: &[NotNan<T>; D],
         boxsize: &[NotNan<T>; D],
-    ) -> (T, u64, &'t [NotNan<T>; D]) {
+    ) -> QueryResult<'t, T, D> {
         // First get real image result
+        #[cfg(not(feature = "no-position"))]
         let (mut best_dist2, mut best_idx, mut best_nn) = self.query_nearest_nonperiodic(query);
+        #[cfg(feature = "no-position")]
+        let (mut best_dist2, mut best_idx) = self.query_nearest_nonperiodic(query);
 
         // Find closest dist2 to every side
         let mut closest_side_dist2 = [T::zero(); D];
@@ -91,7 +96,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let mut images_to_check = Vec::with_capacity(2_usize.pow(D as u32) - 1);
         for image in 1..2_usize.pow(D as u32) {
             // Closest image in the form of bool array
-            let closest_image = (0..D).map(|idx| ((image / 2_usize.pow(idx as u32)) % 2) == 1);
+            let closest_image = (0..D as u32).map(|idx| ((image / 2_usize.pow(idx)) % 2) == 1);
 
             // Find distance to corresponding side, edge, vertex or other higher dimensional equivalent
             let dist_to_side_edge_or_other: T = closest_image
@@ -108,7 +113,8 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                 })
                 .fold(T::zero(), |acc, x| acc + *x);
 
-            if dist_to_side_edge_or_other < best_dist2 {
+            // INTRINSICS: in any reasonably sized kdtree, most points will not be near the edge
+            if unlikely(dist_to_side_edge_or_other < best_dist2) {
                 let mut image_to_check = query.clone();
 
                 for (idx, flag) in closest_image.enumerate() {
@@ -144,19 +150,33 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         // Then check all images we need to check
         for image in &images_to_check {
             // Get image result
-            let (image_best_dist2, image_best_idx, image_nn) = self.query_nearest_nonperiodic(
+            let query_result = self.query_nearest_nonperiodic(
                 // safety: NotNan --> T, the image will be checked by query_nearest
                 unsafe { std::mem::transmute(image) },
             );
 
-            if image_best_dist2 < best_dist2 {
+            #[cfg(not(feature = "no-position"))]
+            let (image_best_dist2, image_best_idx, image_nn) = query_result;
+            #[cfg(feature = "no-position")]
+            let (image_best_dist2, image_best_idx) = query_result;
+
+            // INTRINSICS: most images will be further than best_dist2
+            if unlikely(image_best_dist2 < best_dist2) {
                 best_dist2 = image_best_dist2;
                 best_idx = image_best_idx;
-                best_nn = image_nn;
+                #[cfg(not(feature = "no-position"))]
+                {
+                    best_nn = image_nn;
+                }
             }
         }
 
-        (best_dist2, best_idx, best_nn)
+        (
+            best_dist2,
+            best_idx,
+            #[cfg(not(feature = "no-position"))]
+            best_nn,
+        )
     }
 
     #[inline(always)]
@@ -319,21 +339,4 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     {
         new_best(query, stem, current_best_dist_sq, current_best_neighbor);
     }
-
-    // fn check_point(&self, boxsize: &[NotNan<T>; D]) -> Result<()> {
-
-    //     // Initialize flag
-    //     let mut okay = true;
-
-    //     for length in boxsize {
-    //         if !(length.is_sign_positive() && length.is_normal()) {
-    //             okay = false;
-    //         } else  {
-
-    //         }
-
-    //     }
-
-    //     okay
-    // }
 }

@@ -1,18 +1,16 @@
-use fnntw::{distance::squared_euclidean, utils::QueryResult, Tree};
+use fnntw::{distance::squared_euclidean, point::Float, utils::QueryKResult, Tree};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
-
 use std::error::Error;
-
-type T = f64;
 
 const NDATA: usize = 100;
 const NQUERY: usize = 1_000;
+const BOXSIZE: [f64; 3] = [1.0; 3];
 const D: usize = 3;
-const BOXSIZE: [T; D] = [1.0; D];
+const K: usize = 80;
 
 #[test]
-fn test_brute_force_periodic() -> Result<(), Box<dyn Error>> {
+fn test_brute_force_periodic_k_par() -> Result<(), Box<dyn Error>> {
     // Random number generator
     let mut rng = rand::thread_rng();
 
@@ -27,41 +25,41 @@ fn test_brute_force_periodic() -> Result<(), Box<dyn Error>> {
     }
 
     // Construct tree
-    let tree = Tree::<'_, _, D>::new(&data, 1)?.with_boxsize(&BOXSIZE)?;
+    let tree = Tree::<'_, _, D>::new_parallel(&data, 1, 1)?.with_boxsize(&BOXSIZE)?;
 
     // Query tree
-    let mut results = Vec::with_capacity(NQUERY);
-    for q in &query {
-        results.push(tree.query_nearest(q)?);
-    }
+    let results = tree.query_nearest_k_parallel(&query, K)?;
 
     // Brute force check results
     for (i, q) in query.iter().enumerate() {
-        assert_eq!(results[i], brute_force_periodic(q, &data))
+        let result = (
+            results.0[i * K..(i + 1) * K].to_vec(),
+            results.1[i * K..(i + 1) * K].to_vec(),
+            #[cfg(not(feature = "no-position"))]
+            results.2[i * K..(i + 1) * K].to_vec(),
+        );
+        let expected = brute_force_periodic_k(q, &data, K);
+        assert_eq!(result, expected);
     }
 
     Ok(())
 }
 
-fn random_point<const D: usize>(rng: &mut ThreadRng) -> [T; D] {
+fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
     [(); D].map(|_| rng.gen())
 }
 
-fn brute_force_periodic<'d, const D: usize>(
+fn brute_force_periodic_k<'d, T: Float, const D: usize>(
     q: &[T; D],
     data: &'d [[T; D]],
-) -> QueryResult<'d, T, D> {
+    k: usize,
+) -> QueryKResult<'d, T, D> {
     // No need for nan checks here
     let q: &[NotNan<T>; D] = unsafe { std::mem::transmute(q) };
     let data: &'d [[NotNan<T>; D]] = unsafe { std::mem::transmute(data) };
 
-    let mut best_dist = T::MAX;
-    let mut best = (
-        T::MAX,
-        std::u64::MAX,
-        #[cfg(not(feature = "no-position"))]
-        data.get(0).unwrap(),
-    );
+    // Costly...
+    let mut all = Vec::with_capacity(data.len() * 2_usize.pow(D as u32));
 
     for (d, i) in data.iter().zip(0..) {
         // Note this is 0..2^D here so that we can check all images incl real without
@@ -79,10 +77,11 @@ fn brute_force_periodic<'d, const D: usize>(
                     let query_component: &NotNan<T> = unsafe { q.get_unchecked(idx) };
 
                     // Single index here as well
-                    let boxsize_component = unsafe { BOXSIZE.get_unchecked(idx) };
+                    let boxsize_component =
+                        T::from(unsafe { *BOXSIZE.get_unchecked(idx) }).unwrap();
 
                     unsafe {
-                        if **query_component < boxsize_component / 2.0 {
+                        if **query_component < boxsize_component / T::from(2.0).unwrap() {
                             // Add if in lower half of box
                             *image_to_check.get_unchecked_mut(idx) =
                                 query_component + boxsize_component
@@ -97,21 +96,32 @@ fn brute_force_periodic<'d, const D: usize>(
 
             let dist = squared_euclidean(&image_to_check, d);
 
-            if dist < best_dist {
-                best_dist = dist;
-                best = (
-                    best_dist,
-                    i,
-                    #[cfg(not(feature = "no-position"))]
-                    d,
-                );
-            }
+            all.push((
+                dist,
+                i,
+                #[cfg(not(feature = "no-position"))]
+                d,
+            ))
         }
     }
 
-    if cfg!(feature = "sqrt-dist2") {
-        best.0 = best.0.sqrt();
-    }
+    all.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    #[cfg(feature = "sqrt-dist2")]
+    all.iter_mut().for_each(|p| {
+        p.0 = p.0.sqrt();
+    });
+    all.truncate(k);
 
-    best
+    #[cfg(feature = "no-position")]
+    return all.into_iter().unzip();
+
+    #[cfg(not(feature = "no-position"))]
+    {
+        let mut result = (vec![], vec![], vec![]);
+        for a in all {
+            result.0.push(a[0]);
+            result.1.push(a[1]);
+            result.2.push(a[2]);
+        }
+    }
 }
