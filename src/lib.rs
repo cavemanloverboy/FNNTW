@@ -7,7 +7,7 @@
 // #[global_allocator]
 // static GLOBAL: Jemalloc = Jemalloc;
 
-use likely_stable::{likely, unlikely};
+use likely_stable::likely;
 pub use ordered_float::NotNan;
 use point::{Float, Point};
 
