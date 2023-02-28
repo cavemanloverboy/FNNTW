@@ -26,7 +26,10 @@ fn main() {
     let query = [0.6, 0.1];
 
     // Query the tree
+    #[cfg(not(feature = "no-position"))]
     let (distance_squared, index, neighbor) = tree.query_nearest(&query).unwrap();
+    #[cfg(feature = "no-position")]
+    let (distance_squared, index) = tree.query_nearest(&query).unwrap();
 
     // Check that the distance squared is what we expect
     const TOLERANCE: T = 1e-6;
@@ -36,6 +39,7 @@ fn main() {
     assert_eq!(index, 0);
 
     // Check that the neighbor is the one we expect
+    #[cfg(not(feature = "no-position"))]
     assert_eq!(neighbor, &data[0]);
 
     println!("Success")

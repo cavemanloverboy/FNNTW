@@ -30,10 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (sqdists, indices): (Array2<T>, Array2<u64>) = {
         let result: (Vec<T>, Vec<u64>) = queries
             .par_iter()
-            .map_with(&tree, |t, q| {
-                let result = t.query_nearest_k(q, K).unwrap();
-                result.iter().map(|n| (n.0, n.1)).collect::<Vec<(T, u64)>>()
-            })
+            .map_with(&tree, |t, q| t.query_nearest_k(q, K).unwrap())
             .flatten()
             .unzip();
 

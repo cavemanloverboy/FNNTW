@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use num_format::{Locale, ToFormattedString};
 
-type T = f64;
+type T = f32;
 const D: usize = 3;
 const QUERY: usize = 1_000_000;
 const BOXSIZE: [T; D] = [1.0; D];
@@ -37,10 +37,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let v: Vec<_> = black_box(&query)
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
-                        let (dist, idx, ptr) = t.query_nearest(black_box(q)).unwrap();
-                        drop(dist);
-                        drop(idx);
-                        drop(ptr);
+                        drop(t.query_nearest(black_box(q)).unwrap())
                     })
                     .collect();
                 drop(v)
@@ -53,10 +50,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let v: Vec<_> = black_box(&query)
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
-                        let (dist, idx, ptr) = t.query_nearest(black_box(q)).unwrap();
-                        drop(dist);
-                        drop(idx);
-                        drop(ptr);
+                        drop(t.query_nearest(black_box(q)).unwrap())
                     })
                     .collect();
                 drop(v)
