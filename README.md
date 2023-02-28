@@ -33,10 +33,10 @@ Over 100 realizations of the datasets and query points, the following results ar
 
 |  Code | Build (ms)| Query (ms) | Total (ms) |
 |---|---|---|---|
-| FNNTW | 11 | 28 | 39 |
+| FNNTW | 13 | 28 | 39 |
 | pykdtree (python)| 12 | 36 | 48  |
 | nabo-rs (rust)| 25 | 30  | 55 |
 | Scipy's cKDTree (python) | 31 | 47 | 78 |
 | kiddo (rust)| 26 | 84 | 110 |
 
-With FNNTW's parallel build capability, the build time goes as low as 8.7 ms on the AMD EPYC 7502P (at `split_level = 1`). Since the overhead of the parallelism and atomic operations slows down the build when the number of datapoints is small, both a parallel build and non_parallel build are available via `Tree:new(..)` and `Tree::new_parallel(..)`. The latter takes the aforementioned parameter `par_split_level`, which is the split depth at which the parallelism begins. Although for our applications of O(1e5) points we see the biggest improvement for `par_split_level = 1`, we suspect that the optimal `par_split_level` will increase with the size of the dataset. 
+With FNNTW's parallel build capability, the build time goes as low as 6.5 ms on the AMD EPYC 7502P (at `split_level = 2`). Since the overhead of the parallelism and atomic operations slows down the build when the number of datapoints is small, both a parallel build and non_parallel build are available via `Tree:new(..)` and `Tree::new_parallel(..)`. The latter takes the aforementioned parameter `par_split_level`, which is the split depth at which the parallelism begins. Although for our applications of O(1e5) points we see the biggest improvement for `par_split_level = 2`, we suspect that the optimal `par_split_level` will increase with the size of the dataset. For tree sizes of O(1e8) points, we see peak performance at `par_split_level = 4`.
