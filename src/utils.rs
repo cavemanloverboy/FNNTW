@@ -1,11 +1,13 @@
 use std::fmt::Debug;
 
-use crate::point::{Float, Point};
+use crate::point::Float;
 use ordered_float::NotNan;
-use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 
 pub type FnntwResult<R, T> = Result<R, FnntwError<T>>;
+// #[cfg(feature = "no-index")]
+// pub type QueryResult<'t, T, const D: usize> = T;
 #[cfg(feature = "no-position")]
 pub type QueryResult<'t, T, const D: usize> = (T, u64);
 #[cfg(not(feature = "no-position"))]
@@ -15,6 +17,13 @@ pub type QueryResult<'t, T, const D: usize> = (T, u64, &'t [NotNan<T>; D]);
 pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>);
 #[cfg(not(feature = "no-position"))]
 pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>, Vec<[NotNan<T>; D]>);
+
+#[cfg(feature = "no-index")]
+pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>);
+#[cfg(all(feature = "no-position", not(feature = "no-index")))]
+pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>, Vec<u64>);
+#[cfg(not(feature = "no-position"))]
+pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>, Vec<u64>, Vec<[NotNan<T>; D]>);
 
 pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
     data: &'d [[T; D]],
@@ -71,6 +80,9 @@ pub enum FnntwError<T: Float + Debug> {
     #[error("Invalid boxsize: contains nan, inf, or subnormal float")]
     InvalidBoxsize,
 
+    #[error("Requested an axis that does not exist (incorrect dimensionality)")]
+    InvalidAxis,
+
     #[error(
         "At least one of your data points has a negative component. \
              To use periodic queries, shift your data bounding box to start \
@@ -80,7 +92,7 @@ pub enum FnntwError<T: Float + Debug> {
 }
 
 #[cfg(feature = "sqrt-dist2")]
-#[inline(always)]
+
 pub(crate) fn process_result<'t, T: Float, const D: usize>(
     mut result: QueryResult<'t, T, D>,
 ) -> QueryResult<'t, T, D> {
@@ -89,7 +101,13 @@ pub(crate) fn process_result<'t, T: Float, const D: usize>(
 }
 
 #[cfg(feature = "sqrt-dist2")]
-#[inline(always)]
-pub(crate) fn process_dist2<T: Float>(dist2: &mut T) {
-    *dist2 = dist2.sqrt();
+
+pub(crate) fn process_dist2<T: Float>(dist2: T) -> T {
+    dist2.sqrt()
+}
+
+#[cfg(not(feature = "sqrt-dist2"))]
+
+pub(crate) fn process_dist2<T: Float>(dist2: T) -> T {
+    dist2
 }

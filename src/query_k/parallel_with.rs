@@ -17,6 +17,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         k: usize,
     ) -> FnntwResult<QueryKResult<'t, T, D>, T> {
         use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+        use sync_unsafe_cell::SyncUnsafeCell;
 
         #[cfg(feature = "timing")]
         let alloc_timer = std::time::Instant::now();
@@ -26,7 +27,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let dist_ptr_usize = distances.as_mut_ptr() as usize;
         let idx_ptr_usize = indices.as_mut_ptr() as usize;
 
-        let (tx, rx) = crossbeam_channel::bounded(rayon::max_num_threads());
+        // This is my attempt at trying to have something that resembles a thread local
+        // let tx_rx_vec: Vec<_> = (0..rayon::max_num_threads() / 4)
+        //     .map(|_| crossbeam_channel::bounded(4))
+        //     .collect();
+        let tx_rx_vec: Vec<_> = (0..rayon::max_num_threads())
+            .map(|_| SyncUnsafeCell::new((Container::new(k), Vec::with_capacity(self.height_hint))))
+            .collect();
 
         #[cfg(feature = "timing")]
         println!(
@@ -34,7 +41,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             alloc_timer.elapsed().as_micros()
         );
 
-        // TODO: benchmark height_hint
         if let Some(ref boxsize) = self.boxsize {
             queries.into_par_iter().enumerate().try_for_each(
                 // |(ref mut container, ref mut point_vec),
@@ -46,23 +52,27 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                     //     (Container::new(k), Vec::with_capacity(self.height_hint));
 
                     // Get pre-allocated buffers if available
-                    let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
-                        (Container::new(k), Vec::with_capacity(self.height_hint))
-                    });
+                    let (ref mut container, ref mut point_vec) =
+                        unsafe { &mut *tx_rx_vec[rayon::current_thread_index().unwrap()].get() };
+                    // let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
+                    //     (Container::new(k), Vec::with_capacity(self.height_hint))
+                    // });
 
                     // Periodic query
                     self.query_nearest_k_periodic_into_with(
                         query,
                         k,
                         boxsize,
-                        &mut container,
-                        &mut point_vec,
+                        // &mut container,
+                        // &mut point_vec,
+                        container,
+                        point_vec,
                         dist_ptr_usize,
                         idx_ptr_usize,
                         query_index,
                     );
 
-                    tx.send((container, point_vec)).unwrap();
+                    // tx.send((container, point_vec)).unwrap();
 
                     Ok(())
                 },
@@ -77,22 +87,27 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                     //     (Container::new(k), Vec::with_capacity(self.height_hint));
 
                     // Get pre-allocated buffers if available
-                    let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
-                        (Container::new(k), Vec::with_capacity(self.height_hint))
-                    });
+                    // let (ref tx, ref rx) = tx_rx_vec[rayon::current_thread_index().unwrap() / 4];
+                    let (ref mut container, ref mut point_vec) =
+                        unsafe { &mut *tx_rx_vec[rayon::current_thread_index().unwrap()].get() };
+                    // let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
+                    //     (Container::new(k), Vec::with_capacity(self.height_hint))
+                    // });
 
                     // Nonperiodic query
                     self.query_nearest_k_nonperiodic_into_with(
                         query,
                         k,
-                        &mut container,
-                        &mut point_vec,
+                        // &mut container,
+                        // &mut point_vec,
+                        container,
+                        point_vec,
                         dist_ptr_usize,
                         idx_ptr_usize,
                         query_index,
                     );
 
-                    tx.send((container, point_vec)).unwrap();
+                    // tx.send((container, point_vec)).unwrap();
 
                     Ok(())
                 },
@@ -121,40 +136,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     {
         // Get reference to the root node
         let current_node: &'q Node<T, D> = &self.root_node;
-
-        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-        // and distance to their associated space in form of (&usize, T), where usize is
-        // the index inside of self.nodes. The root node is checked at the end.
-        // let mut points_to_check: Vec<(&'q usize, &'q Point<T, D>, T)> =
-        // Vec::with_capacity(self.height_hint);
-
-        // if let Ok(ref mut inner) = point_vecs.try_write() {
-        //     inner
-        //         .pop()
-        //         .unwrap_or_else(|| Vec::with_capacity(self.height_hint))
-        // } else {
-        //     Vec::with_capacity(self.height_hint)
-        // };
-
-        // Initialize candidate container with dummy point
-        // let mut container =
-        // // Container::new(k.min(self.data.len()));
-        // if let Ok(ref mut inner) =containers.try_write() {
-        //     inner
-        //         .pop()
-        //         .unwrap_or_else(|| Container::new(k.min(self.data.len())))
-        // } else {
-        //     Container::new(k.min(self.data.len()))
-        // };
-
         container.push((T::max_value(), current_node.stem()));
 
         // Recurse down (and then up and down) the stem
         self.check_stem_k(query, current_node, container, points_to_check);
 
         // Write to given vector
-        container.index_into(distances_ptr, indices_ptr, query_index, self.data_ptr());
-        // index into clears!!
+        container.index_into(distances_ptr, indices_ptr, query_index, self.start());
     }
 
     fn query_nearest_k_periodic_into_with<'q, 'i>(
@@ -174,22 +162,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let real_image_container: &mut Container<T, D> = {
             // Get reference to the root node
             let current_node: &Node<T, D> = &self.root_node;
-
-            // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, T), where usize is
-            // the index inside of self.nodes. The root node is checked at the end.
-            // let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> = point_vecs
-            //     .write()
-            //     .unwrap()
-            //     .pop()
-            //     .unwrap_or_else(|| Vec::with_capacity(self.height_hint));
-
-            // Initialize candidate container with dummy point
-            // let mut container = containers
-            //     .write()
-            //     .unwrap()
-            //     .pop()
-            //     .unwrap_or_else(|| Container::new(k.min(self.data.len())));
             container.push((T::max_value(), current_node.stem()));
 
             // Recurse down (and then up and down) the stem
@@ -291,10 +263,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             );
         }
 
-        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.data_ptr());
-
-        // index into clears!
-        // real_image_container.clear();
-        // points_to_check.clear();
+        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.start());
     }
 }

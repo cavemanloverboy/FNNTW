@@ -4,24 +4,24 @@ use std::collections::BinaryHeap;
 use crate::utils::process_dist2;
 use crate::{
     point::{Float, Point},
-    utils::QueryKResult,
+    utils::{QueryKAxisResult, QueryKResult},
     NotNan,
 };
 
 /// Using this struct to impl PartialOrd for T.
 #[repr(transparent)]
 #[derive(Clone)]
-pub(crate) struct Candidate<'t, T: Float, const D: usize>((T, &'t Point<T, D>));
+pub(crate) struct CandidateAxis<'t, T: Float, const D: usize>(((T, T, T), &'t Point<T, D>));
 
 #[derive(Clone)]
-pub struct Container<'t, T: Float, const D: usize> {
-    items: BinaryHeap<Candidate<'t, T, D>>,
+pub struct ContainerAxis<'t, T: Float, const D: usize> {
+    items: BinaryHeap<CandidateAxis<'t, T, D>>,
     k_or_datalen: usize,
 }
 
-impl<'t, T: Float, const D: usize> Container<'t, T, D> {
+impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
     pub fn new(k: usize) -> Self {
-        Container {
+        ContainerAxis {
             items: BinaryHeap::with_capacity(k),
             k_or_datalen: k,
         }
@@ -34,34 +34,37 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
 
     // Euclidean needs access to this one
     // The caller of this function has already done a dist2 <= max_dist2 check
-    pub(crate) fn push(&mut self, neighbor: (T, &'t Point<T, D>)) {
+    pub(crate) fn push(&mut self, neighbor: ((T, T, T), &'t Point<T, D>)) {
         if self.items.len() >= self.k_or_datalen {
             // If >=k elements, eject largest
-            let neighbor: Candidate<T, D> = Candidate(neighbor);
+            let neighbor: CandidateAxis<T, D> = CandidateAxis(neighbor);
             // SAFETY: the length was just checked
             unsafe {
                 *self.items.peek_mut().unwrap_unchecked() = neighbor;
             }
         } else {
             // If less than k elements, add element.
-            self.items.push(Candidate(neighbor));
+            self.items.push(CandidateAxis(neighbor));
         }
     }
 
     // Euclidean needs access to this one
+    // Note this is best kth, not best 1NN
     pub(crate) fn best_dist2(&self) -> &T {
-        &self.items.peek().unwrap().0 .0
+        &self.items.peek().unwrap().0 .0 .0
     }
 
     #[allow(unused_mut)] // if sqrt-dist2 is on, mut is not used
 
-    pub(super) fn index<'i>(&mut self, start: *const [NotNan<T>; D]) -> QueryKResult<'t, T, D>
+    pub(super) fn index<'i>(&mut self, start: *const [NotNan<T>; D]) -> QueryKAxisResult<'t, T, D>
     where
         't: 'i,
     {
         // Preallocate
-        let mut result: QueryKResult<'t, T, D> = (
+        let mut result: QueryKAxisResult<'t, T, D> = (
             Vec::with_capacity(self.k_or_datalen),
+            Vec::with_capacity(self.k_or_datalen),
+            #[cfg(not(feature = "no-index"))]
             Vec::with_capacity(self.k_or_datalen),
             #[cfg(not(feature = "no-position"))]
             Vec::with_capacity(self.k_or_datalen),
@@ -78,13 +81,19 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
         // let mut idx = self.items.len();
         // while let Some(Candidate((dist2, neighbor))) = self.items.pop() {
         let mut idx = 0;
-        for Candidate((mut dist2, neighbor)) in std::mem::take(&mut self.items).into_sorted_vec() {
+        for CandidateAxis(((_, ax, nonax), neighbor)) in
+            std::mem::take(&mut self.items).into_sorted_vec()
+        {
             unsafe {
-                *ptrs.0.add(idx) = process_dist2(dist2);
-                *ptrs.1.add(idx) = neighbor.index(start);
+                *ptrs.0.add(idx) = process_dist2(ax);
+                *ptrs.1.add(idx) = process_dist2(nonax);
+                #[cfg(not(feature = "no-index"))]
+                {
+                    *ptrs.2.add(idx) = neighbor.index(start);
+                }
                 #[cfg(not(feature = "no-position"))]
                 {
-                    *ptrs.2.add(idx) = neighbor.position;
+                    *ptrs.3.add(idx) = neighbor.position;
                 }
             }
             idx += 1;
@@ -103,13 +112,15 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
     pub(super) fn index_with<'i>(
         mut self,
         start: *const [NotNan<T>; D],
-    ) -> (QueryKResult<'t, T, D>, Self)
+    ) -> (QueryKAxisResult<'t, T, D>, Self)
     where
         't: 'i,
     {
         // Preallocate
-        let mut result: QueryKResult<'t, T, D> = (
+        let mut result: QueryKAxisResult<'t, T, D> = (
             Vec::with_capacity(self.k_or_datalen),
+            Vec::with_capacity(self.k_or_datalen),
+            #[cfg(not(feature = "no-index"))]
             Vec::with_capacity(self.k_or_datalen),
             #[cfg(not(feature = "no-position"))]
             Vec::with_capacity(self.k_or_datalen),
@@ -126,13 +137,19 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
         // let mut idx = self.items.len();
         // while let Some(Candidate((dist2, neighbor))) = self.items.pop() {
         let mut idx = 0;
-        for Candidate((mut dist2, neighbor)) in std::mem::take(&mut self.items).into_sorted_vec() {
+        for CandidateAxis(((_, ax, nonax), neighbor)) in
+            std::mem::take(&mut self.items).into_sorted_vec()
+        {
             unsafe {
-                *ptrs.0.add(idx) = process_dist2(dist2);
-                *ptrs.1.add(idx) = neighbor.index(start);
+                *ptrs.0.add(idx) = process_dist2(ax);
+                *ptrs.1.add(idx) = process_dist2(nonax);
+                #[cfg(not(feature = "no-index"))]
+                {
+                    *ptrs.2.add(idx) = neighbor.index(start);
+                }
                 #[cfg(not(feature = "no-position"))]
                 {
-                    *ptrs.2.add(idx) = neighbor.position;
+                    *ptrs.3.add(idx) = neighbor.position;
                 }
             }
             idx += 1;
@@ -140,44 +157,59 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
         unsafe {
             result.0.set_len(self.k_or_datalen);
             result.1.set_len(self.k_or_datalen);
-            #[cfg(not(feature = "no-position"))]
+            #[cfg(not(feature = "no-index"))]
             result.2.set_len(self.k_or_datalen);
+            #[cfg(not(feature = "no-position"))]
+            result.3.set_len(self.k_or_datalen);
         }
         (result, self)
     }
 
     pub(super) fn index_into<'i>(
         &mut self,
-        distances_ptr: usize,
-        indices_ptr: usize,
+        ax_ptr: usize,
+        nonax_ptr: usize,
+        #[cfg(not(feature = "no-index"))] indices_ptr: usize,
         query_index: usize,
         start: *const [NotNan<T>; D],
     ) where
         't: 'i,
     {
-        let dptr = distances_ptr as *mut T;
+        let axptr = ax_ptr as *mut T;
+        let nonaxptr = ax_ptr as *mut T;
+        #[cfg(not(feature = "no-index"))]
         let iptr = indices_ptr as *mut u64;
 
         {
             let neighbors: Vec<_> = std::mem::take(&mut self.items).into_sorted_vec();
             let mut idx = 0;
-            for Candidate((dist2, _)) in &neighbors {
+            for CandidateAxis(((d2, ax, nonax), p)) in &neighbors {
                 unsafe {
-                    *dptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*dist2);
+                    *axptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*ax);
                 }
                 idx += 1;
             }
             let mut idx = 0;
-            for Candidate((_, neighbor)) in &neighbors {
+            for CandidateAxis(((d2, ax, nonax), p)) in &neighbors {
                 unsafe {
-                    *iptr.add(query_index * self.k_or_datalen + idx) = neighbor.index(start);
+                    *nonaxptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*nonax);
                 }
                 idx += 1;
+            }
+            #[cfg(not(feature = "no-index"))]
+            {
+                let mut idx = 0;
+                for CandidateAxis((_, neighbor)) in &neighbors {
+                    unsafe {
+                        *iptr.add(query_index * self.k_or_datalen + idx) = neighbor.index(start);
+                    }
+                    idx += 1;
+                }
             }
             #[cfg(not(feature = "no-position"))]
             {
                 let mut idx = 0;
-                for Candidate((_, neighbor)) in &neighbors {
+                for CandidateAxis((_, neighbor)) in &neighbors {
                     unsafe {
                         *ptrs.2.add(idx) = neighbor.position;
                     }
@@ -188,37 +220,42 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
     }
 }
 
-impl<'t, T: Float, const D: usize> PartialEq<Self> for Candidate<'t, T, D> {
+impl<'t, T: Float, const D: usize> PartialEq<Self> for CandidateAxis<'t, T, D> {
     fn eq(&self, other: &Self) -> bool {
-        self.0 .0.eq(&other.0 .0)
+        self.0 .0 .0.eq(&other.0 .0 .0)
     }
 }
 
-impl<'t, T: Float, const D: usize> PartialEq<(T, &'t [NotNan<T>; D])> for Candidate<'t, T, D> {
-    fn eq(&self, other: &(T, &'t [NotNan<T>; D])) -> bool {
-        self.0 .0.eq(&other.0)
+impl<'t, T: Float, const D: usize> PartialEq<((T, T, T), &'t [NotNan<T>; D])>
+    for CandidateAxis<'t, T, D>
+{
+    fn eq(&self, other: &((T, T, T), &'t [NotNan<T>; D])) -> bool {
+        self.0 .0 .0.eq(&other.0 .0)
     }
 }
 
-impl<'t, T: Float, const D: usize> Eq for Candidate<'t, T, D> {}
+impl<'t, T: Float, const D: usize> Eq for CandidateAxis<'t, T, D> {}
 
-impl<'t, T: Float, const D: usize> PartialOrd for Candidate<'t, T, D> {
+impl<'t, T: Float, const D: usize> PartialOrd for CandidateAxis<'t, T, D> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0 .0.partial_cmp(&other.0 .0)
+        self.0 .0 .0.partial_cmp(&other.0 .0 .0)
     }
 }
 
-impl<'t, T: Float, const D: usize> PartialOrd<(T, &'t [NotNan<T>; D])> for Candidate<'t, T, D> {
-    fn partial_cmp(&self, other: &(T, &'t [NotNan<T>; D])) -> Option<std::cmp::Ordering> {
-        self.0 .0.partial_cmp(&other.0)
+impl<'t, T: Float, const D: usize> PartialOrd<((T, T, T), &'t [NotNan<T>; D])>
+    for CandidateAxis<'t, T, D>
+{
+    fn partial_cmp(&self, other: &((T, T, T), &'t [NotNan<T>; D])) -> Option<std::cmp::Ordering> {
+        self.0 .0 .0.partial_cmp(&other.0 .0)
     }
 }
 
-impl<'t, T: Float, const D: usize> Ord for Candidate<'t, T, D> {
+impl<'t, T: Float, const D: usize> Ord for CandidateAxis<'t, T, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0
              .0
-            .partial_cmp(&other.0 .0)
+             .0
+            .partial_cmp(&other.0 .0 .0)
             .expect("Some NaN or Inf value was encountered")
     }
 }

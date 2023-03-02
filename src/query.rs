@@ -29,7 +29,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
     /// Given a query point `query`, query the tree and return point's nearest neighbor.
     /// The value returned is (`distance_to_neighbor: T`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<T>; D]`).
-    #[inline(always)]
+
     fn query_nearest_nonperiodic<'q>(&'q self, query: &[NotNan<T>; D]) -> QueryResult<'t, T, D> {
         // Get reference to the root node
         let current_node: &Node<T, D> = &self.root_node;
@@ -54,13 +54,12 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         (
             current_best_dist_sq,
-            unsafe { current_best_neighbor.index(self.data_ptr()) },
+            unsafe { current_best_neighbor.index(self.start()) },
             #[cfg(not(feature = "no-position"))]
             current_best_neighbor.position,
         )
     }
 
-    #[inline(always)]
     fn query_nearest_periodic<'q>(
         &'q self,
         query: &[NotNan<T>; D],
@@ -179,7 +178,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         )
     }
 
-    #[inline(always)]
     /// Upon checking that we are close to some other space during upward traversal of the tree,
     /// this function is called to check candidates in the child space, appending any new candidate spaces
     /// as we go along
@@ -220,7 +218,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
     }
 
-    #[inline(always)]
     fn check_leaf<'a, 'b>(
         &self,
         query: &'b [NotNan<T>; D],
@@ -244,7 +241,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     }
 
     /// If sibling is a stem, then we need to recurse back down
-    #[inline(always)]
+
     fn check_stem<'i, 'o>(
         &'i self,
         query: &[NotNan<T>; D],
@@ -262,10 +259,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         while current_node.is_stem() {
             let next_leafnode = match current_node {
                 Node::Stem {
-                    ref split_dim,
+                    split_dim,
                     point,
                     left,
-                    ref right,
+                    right,
                     ..
                 } => {
                     // Determine left/right split
@@ -278,7 +275,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                             unsafe { self.nodes.get_unchecked(*left) }.get_bounds();
                         let dist_sq_to_space =
                             calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
+                        // if dist_sq_to_space < *current_best_dist_sq {
                         points_to_check.push((left, point, dist_sq_to_space));
+                        // }
 
                         // Right Branch
                         right
@@ -289,7 +288,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                             unsafe { self.nodes.get_unchecked(*right) }.get_bounds();
                         let dist_sq_to_space =
                             calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
+                        // if dist_sq_to_space < *current_best_dist_sq {
                         points_to_check.push((right, point, dist_sq_to_space));
+                        // }
 
                         // Left Branch
                         left
@@ -326,7 +327,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
     }
 
-    #[inline(always)]
     fn check_parent<'i, 'o>(
         &self,
         query: &[NotNan<T>; D],

@@ -1,12 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![feature(core_intrinsics)]
-
-#[cfg(not(target_env = "msvc"))]
-use jemallocator::Jemalloc;
-
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
 
 use likely_stable::likely;
 pub use ordered_float::NotNan;
@@ -22,6 +14,7 @@ use std::{
 #[cfg(feature = "timing")]
 use num_format::{Locale, ToFormattedString};
 
+mod allocator;
 pub mod distance;
 pub mod point;
 pub mod query;
@@ -56,7 +49,8 @@ pub struct Tree<'t, T: Float, const D: usize> {
     /// to inspect the data that was used to build the tree.
     input: &'t [[T; D]],
 
-    data: Vec<Point<T, D>>,
+    start: *const [NotNan<T>; D],
+
     /// Unused, but here for future/user reference
     #[allow(unused)]
     pub leafsize: usize,
@@ -72,6 +66,7 @@ pub struct Tree<'t, T: Float, const D: usize> {
 
     /// Optional boxsize for periodic queries.
     boxsize: Option<[NotNan<T>; D]>,
+    data: Vec<Point<T, D>>,
 }
 
 #[derive(Debug)]
@@ -93,6 +88,9 @@ pub enum Node<T: Float, const D: usize> {
 
 unsafe impl<T: Float, const D: usize> Send for Node<T, D> {}
 unsafe impl<T: Float, const D: usize> Sync for Node<T, D> {}
+
+unsafe impl<'t, T: Float, const D: usize> Send for Tree<'t, T, D> {}
+unsafe impl<'t, T: Float, const D: usize> Sync for Tree<'t, T, D> {}
 
 impl<T: Float, const D: usize> Node<T, D> {
     fn is_stem(&self) -> bool {
@@ -151,7 +149,7 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
 
             // This is used to determine the size several allocations
             let data_len = input.len();
-            let height_hint = data_len.ilog2().saturating_sub(1) as usize;
+            let height_hint = data_len.ilog2() as usize;
 
             // Initialize variables for recursive function
             let split_level: usize = 0;
@@ -249,9 +247,12 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
             // Ensure we've checked data before returning
             unsafe { handle.join().unwrap_unchecked()? };
 
+            let start = input.as_ptr() as *const [NotNan<T>; D];
+
             Ok(Tree {
                 data,
                 input,
+                start,
                 leafsize,
                 nodes,
                 height_hint,
@@ -472,7 +473,7 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
 
             // This is used to determine the size several allocations
             let data_len = input.len();
-            let height_hint = data_len.ilog2().saturating_sub(1) as usize;
+            let height_hint = data_len.ilog2() as usize;
 
             // Initialize variables for recursive function
             let split_level: usize = 0;
@@ -561,9 +562,12 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
             // ensure we've checked data before returning
             handle.join().unwrap()?;
 
+            let start = input.as_ptr() as *const [NotNan<T>; D];
+
             Ok(Tree {
                 data,
                 input,
+                start,
                 leafsize,
                 nodes,
                 height_hint,
@@ -730,8 +734,8 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
         self.nodes.len() + 1
     }
 
-    pub fn data_ptr(&self) -> *const [T; D] {
-        self.input.as_ptr()
+    fn start(&self) -> *const [NotNan<T>; D] {
+        self.start
     }
 
     /// Set the boxsize used for periodic queries
@@ -814,7 +818,6 @@ mod tests {
     }
 }
 
-#[inline(always)]
 fn size_of_tree(datalen: usize, leafsize: usize) -> usize {
     if likely(datalen > leafsize) {
         let left = datalen / 2 - 1;

@@ -26,30 +26,22 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let dist_ptr_usize = distances.as_mut_ptr() as usize;
         let idx_ptr_usize = indices.as_mut_ptr() as usize;
 
-        // // These are essentially thread locals
-        // let mut containers = vec![Container::<'q, T, D>::new(k); rayon::current_num_threads()];
-        // let mut point_vecs = vec![
-        //     Vec::<(&usize, &Point<'q, T, D>)>::with_capacity(self.height_hint);
-        //     rayon::current_num_threads()
-        // ];
-        // let container_ptr_usize = containers.as_mut_ptr() as usize;
-        // let point_vecs_ptr_usize = point_vecs.as_mut_ptr() as usize;
-
         #[cfg(feature = "timing")]
         println!(
             "time to alloc was {} micros",
             alloc_timer.elapsed().as_micros()
         );
 
-        // TODO: benchmark height_hint
         if let Some(ref boxsize) = self.boxsize {
             queries.into_par_iter().enumerate().try_for_each(
                 |(query_index, query)| -> FnntwResult<_, T> {
                     // Check for valid query point
                     let query: &[NotNan<T>; D] = check_point_return(query)?;
 
-                    let (mut container, mut point_vec) =
-                        (Container::new(k), Vec::with_capacity(self.height_hint));
+                    let (mut container, mut point_vec) = (
+                        Container::new(k.min(self.data.len())),
+                        Vec::with_capacity(2 * self.height_hint),
+                    );
 
                     // Periodic query
                     self.query_nearest_k_periodic_into(
@@ -72,8 +64,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                     // Check for valid query point
                     let query: &[NotNan<T>; D] = check_point_return(query)?;
 
-                    let (mut container, mut point_vec) =
-                        (Container::new(k), Vec::with_capacity(self.height_hint));
+                    let (mut container, mut point_vec) = (
+                        Container::new(k.min(self.data.len())),
+                        Vec::with_capacity(2 * self.height_hint),
+                    );
                     // Nonperiodic query
                     self.query_nearest_k_nonperiodic_into(
                         query,
@@ -112,39 +106,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     {
         // Get reference to the root node
         let current_node: &'q Node<T, D> = &self.root_node;
-
-        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-        // and distance to their associated space in form of (&usize, T), where usize is
-        // the index inside of self.nodes. The root node is checked at the end.
-        // let mut points_to_check: Vec<(&'q usize, &'q Point<T, D>, T)> =
-        // Vec::with_capacity(self.height_hint);
-
-        // if let Ok(ref mut inner) = point_vecs.try_write() {
-        //     inner
-        //         .pop()
-        //         .unwrap_or_else(|| Vec::with_capacity(self.height_hint))
-        // } else {
-        //     Vec::with_capacity(self.height_hint)
-        // };
-
-        // Initialize candidate container with dummy point
-        // let mut container =
-        // // Container::new(k.min(self.data.len()));
-        // if let Ok(ref mut inner) =containers.try_write() {
-        //     inner
-        //         .pop()
-        //         .unwrap_or_else(|| Container::new(k.min(self.data.len())))
-        // } else {
-        //     Container::new(k.min(self.data.len()))
-        // };
-
         container.push((T::max_value(), current_node.stem()));
 
         // Recurse down (and then up and down) the stem
         self.check_stem_k(query, current_node, container, points_to_check);
 
         // Write to given vector
-        container.index_into(distances_ptr, indices_ptr, query_index, self.data_ptr());
+        container.index_into(distances_ptr, indices_ptr, query_index, self.start());
         // index into clears!!
     }
 
@@ -165,22 +133,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let mut real_image_container: &mut Container<T, D> = {
             // Get reference to the root node
             let current_node: &Node<T, D> = &self.root_node;
-
-            // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, T), where usize is
-            // the index inside of self.nodes. The root node is checked at the end.
-            // let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> = point_vecs
-            //     .write()
-            //     .unwrap()
-            //     .pop()
-            //     .unwrap_or_else(|| Vec::with_capacity(self.height_hint));
-
-            // Initialize candidate container with dummy point
-            // let mut container = containers
-            //     .write()
-            //     .unwrap()
-            //     .pop()
-            //     .unwrap_or_else(|| Container::new(k.min(self.data.len())));
             container.push((T::max_value(), current_node.stem()));
 
             // Recurse down (and then up and down) the stem
@@ -266,13 +218,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         // Then check all images we need to check
         for image in images_to_check {
-            // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-            // and distance to their associated space in form of (&usize, T), where usize is
-            // the index inside of self.nodes. The root node is checked at the end.
-            // let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
-            //     Vec::with_capacity(self.height_hint);
-            // points_to_check.clear();
-
             // Get image result
             self.check_stem_k(
                 &image,
@@ -282,10 +227,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             );
         }
 
-        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.data_ptr());
-
-        // index into clears!
-        // real_image_container.clear();
-        // points_to_check.clear();
+        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.start());
     }
 }

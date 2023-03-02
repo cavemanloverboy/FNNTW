@@ -4,10 +4,9 @@ use ordered_float::NotNan;
 
 use crate::{
     point::{Float, Point},
-    query_k::container::Container,
+    query_k::{container::Container, container_axis::ContainerAxis},
 };
 
-#[inline(always)]
 pub fn squared_euclidean<T: Float, const D: usize>(a: &[NotNan<T>; D], b: &[NotNan<T>; D]) -> T
 where
     T: AddAssign,
@@ -25,7 +24,34 @@ where
     dist_sq
 }
 
-#[inline(always)]
+pub fn squared_euclidean_axis<T: Float, const D: usize>(
+    a: &[NotNan<T>; D],
+    b: &[NotNan<T>; D],
+    axis: usize,
+) -> (T, T, T)
+where
+    T: AddAssign + PartialEq,
+{
+    // Initialize accumulator vars
+    let mut ax: T = T::zero();
+    let mut nonax: T = T::zero();
+
+    for idx in 0..D {
+        // safety: made safe by const generic
+        if idx == axis {
+            unsafe {
+                ax += (a.get_unchecked(idx) - b.get_unchecked(idx)).powi(2);
+            }
+        } else {
+            unsafe {
+                nonax += (a.get_unchecked(idx) - b.get_unchecked(idx)).powi(2);
+            }
+        }
+    }
+
+    (ax + nonax, ax, nonax)
+}
+
 pub fn new_best<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     candidate: &'i Point<T, D>,
@@ -55,7 +81,6 @@ where
     }
 }
 
-#[inline(always)]
 pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     candidate: &'i Point<T, D>,
@@ -74,12 +99,31 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     }
 }
 
+pub(crate) fn new_best_kth_axis<'t, 'i, 'o, T: Float, const D: usize>(
+    query: &[NotNan<T>; D],
+    candidate: &'i Point<T, D>,
+    container: &'o mut ContainerAxis<'i, T, D>,
+    axis: usize,
+) where
+    'i: 'o,
+    't: 'i,
+{
+    // Run usual squared_euclidean fn
+    let (dist2, ax, nonax) = squared_euclidean_axis(query, unsafe { candidate.position() }, axis);
+
+    // Compare squared dist
+    let new_best = dist2 <= *container.best_dist2();
+    if new_best {
+        container.push(((dist2, ax, nonax), candidate));
+    }
+}
+
 /// Calculate the distance from `query` to some space defined by `lower` and `upper`.
 ///
 /// This function constructs a point (neither in the tree nor is it `query`) that
 /// represents the point in the space defined by `lower` and `upper` that is closest
 /// to `query`. Then, it computes the squared euclidean distance between the two.
-#[inline(always)]
+
 pub fn calc_dist_sq_to_space<T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     lower: &[NotNan<T>; D],
@@ -112,7 +156,7 @@ pub fn calc_dist_sq_to_space<T: Float, const D: usize>(
 /// more comparisons but less aritmetic.
 ///
 /// This was innovative, but unfortunately not better...
-#[inline(always)]
+
 pub fn new_best_short<'a, 'b, 'c, T: Float, const D: usize>(
     query: &'c [NotNan<T>; D],
     candidate: &'b [NotNan<T>; D],
