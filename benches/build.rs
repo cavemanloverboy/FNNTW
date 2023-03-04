@@ -7,12 +7,12 @@ const D: usize = 3;
 
 fn criterion_benchmark(c: &mut Criterion) {
     // Bench building tree
-    for ndata in [5, 6].map(|p| 10_usize.pow(p)) {
+    for ndata in [5, 6, 7, 8].map(|p| 10_usize.pow(p)) {
         let data: Vec<[T; D]> = (0..ndata)
             .map(|_| [(); D].map(|_| rand::random()))
             .collect();
         let mut g = c.benchmark_group(format!("{ndata}"));
-        g.sample_size(100).confidence_level(0.99);
+        g.sample_size(10).confidence_level(0.9);
 
         g.bench_function(format!("Build (ndata = {ndata})").as_str(), |b| {
             b.iter(|| {
@@ -21,7 +21,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             })
         });
 
-        for par_split in 1..4 {
+        for par_split in 1..=4 {
             g.sample_size(10).bench_function(
                 format!("Parallel({par_split}) Build (ndata = {ndata})").as_str(),
                 |b| {
