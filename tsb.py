@@ -1,54 +1,66 @@
 import numpy as np
-from time import time
+from time import perf_counter as time
 import pyfnntw
+import os
+os.environ.setdefault("TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD", f"{100*2**30}")
 
 
 NRAND = 10**5
-NQUERY = 10**6
-RUNS = 100
+NQUERY = 10**7
+RUNS = 10
+WARMUP = 10
 LS = 32
-KK = [1, 2, 4, 8]
+KK = [1, 32]
 
 # Generate data 
 DATA = np.random.uniform(size=(NRAND, 3))
+QUERIES = np.random.uniform(size=(NQUERY, 3))
 
 for lib in ["fnntw"]:
     print()
     print(f"{lib} results (d={NRAND:,}, q={NQUERY:,}, ls={LS}, runs={RUNS})")
+
+    build_time = 0
+    kdtree = None
+    # Generate queries
+    for run in range(-WARMUP, RUNS):
+        # Build tree
+        start = time()
+        kdtree = pyfnntw.Treef64(DATA, leafsize=LS, par_split_level=3)
+        bt = (time() - start)*1000
+        if run > 0:
+            build_time += bt
+    avg_build = build_time / RUNS
+    print(f"{lib}: {avg_build=:.3f} ms")
+
     for K in KK:
         query_time = 0
-        build_time = 0
-        kdtree = None
-        # Generate queries
-        queries = np.random.uniform(size=(NQUERY, 3))
-        for run in range(RUNS):
-
-
-            # Build tree
-            start = time()
-            kdtree = pyfnntw.Treef64(DATA, leafsize=LS, par_split_level=3)
-            bt = (time() - start)*1000
-            build_time += bt
+        qt = 0
+        for run in range(-WARMUP, RUNS):
 
             # Query tree
-            start = time()
             if lib == "scipy":
-                dist, idx = kdtree.query(queries, k=K, workers=-1)        
+                start = time()
+                dist, idx = kdtree.query(QUERIES, k=K, workers=-1)        
+                qt = (time() - start)*1000
             elif lib == "pykdtree":
-                dist, idx = kdtree.query(queries, k=K, sqr_dists=False)
+                start = time()
+                dist, idx = kdtree.query(QUERIES, k=K, sqr_dists=False)
+                qt = (time() - start)*1000
             elif lib == "fnntw":
-                dist, idx = kdtree.query(queries, K)
+                start = time()
+                dist, idx = kdtree.query(QUERIES, K)
+                qt = (time() - start)*1000
             else:
                 assert False
-            qt = (time() - start)*1000
-            query_time += qt
+            if run > 0:
+                query_time += qt
             
             # Print run results
             # print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
 
-        avg_build = build_time / RUNS
         avg_query = query_time / RUNS
-        print(f"{lib} k={K}: {avg_build=:.3f} ms; {avg_query=:.3f} ms")
+        print(f"{lib} k={K}: {avg_query=:.3f} ms")
     print()
 
 print("periodic results")
@@ -60,27 +72,21 @@ for lib in ["fnntw"]:
         build_time = 0
         kdtree = None
         # Generate queries
-        queries = np.random.uniform(size=(NQUERY, 3))
+        QUERIES = np.random.uniform(size=(NQUERY, 3))
+        kdtree = pyfnntw.Treef64(DATA, boxsize = np.array([1.0]*3), leafsize=LS, par_split_level=3)
+
         for run in range(RUNS):
-
-            # Build tree
-            start = time()
-            kdtree = pyfnntw.Treef64(DATA, boxsize = np.array([1.0]*3), leafsize=LS, par_split_level=3)
-            bt = (time() - start)*1000
-            build_time += bt
-
             # Query tree
             start = time()
-            dist, idx = kdtree.query(queries, K)
+            dist, idx = kdtree.query(QUERIES, K)
             qt = (time() - start)*1000
             query_time += qt
             
             # Print run results
             # print(f"Run {run}: {bt=:.3f} ms; {qt=:.3f} ms")
 
-        avg_build = build_time / RUNS
         avg_query = query_time / RUNS
-        print(f"{lib} k={K}: {avg_build=:.3f} ms; {avg_query=:.3f} ms")
+        print(f"{lib} k={K}: {avg_query=:.3f} ms")
     print()
 
 for lib in ["fnntw"]:
@@ -92,7 +98,7 @@ for lib in ["fnntw"]:
         build_time = 0
         kdtree = None
         # Generate queries
-        queries = np.random.uniform(size=(NQUERY, 3)).astype(np.float32)
+        QUERIES = np.random.uniform(size=(NQUERY, 3)).astype(np.float32)
         for run in range(RUNS):
 
 
@@ -104,7 +110,7 @@ for lib in ["fnntw"]:
 
             # Query tree
             start = time()
-            dist, idx = kdtree.query(queries, K)
+            dist, idx = kdtree.query(QUERIES, K)
             qt = (time() - start)*1000
             query_time += qt
             
