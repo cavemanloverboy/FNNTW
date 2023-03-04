@@ -6,9 +6,10 @@ use num_format::{Locale, ToFormattedString};
 
 type T = f64;
 const D: usize = 3;
-const QUERY: usize = 100_000;
+const QUERY: usize = 4_000_000;
 const BOXSIZE: [T; D] = [1.0; D];
-const NDATA: usize = 100_000;
+const NDATA: usize = 4_000_000;
+const LS: usize = 32;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let data: Vec<[T; D]> = (0..NDATA)
@@ -28,26 +29,24 @@ fn criterion_benchmark(c: &mut Criterion) {
             criterion::PlotConfiguration::default()
                 .summary_scale(criterion::AxisScale::Logarithmic),
         )
-        .sample_size(10);
+        .sample_size(10)
+        .confidence_level(0.95);
 
-    for log2k in [5, 6, 7, 8, 9, 10] {
-        let tree = Tree::new(black_box(&data), black_box(32)).unwrap();
+    for k in [10] {
+        let tree = Tree::new(black_box(&data), LS).unwrap();
 
-        group.bench_function(format!("log2(k)={log2k} nonpbc"), |b| {
+        group.bench_function(format!("k={k} nonpbc"), |b| {
             b.iter(|| {
                 let v: Vec<_> = black_box(&query)
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
-                        let results = black_box(
-                            t.query_nearest_k(black_box(q), black_box(2_usize.pow(log2k))),
-                        );
-                        drop(results);
+                        black_box(t.query_nearest_k(black_box(q), black_box(k))).unwrap();
                     })
                     .collect();
-                drop(v)
+                v
             })
         });
-        // group.bench_function(format!("log2(k)={log2k} with nonpbc"), |b| {
+        // group.bench_function(format!("k={k} with nonpbc"), |b| {
         //     let (tx, rx) = crossbeam_channel::bounded(rayon::max_num_threads());
 
         //     b.iter(|| {
@@ -62,7 +61,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         //                 });
         //                 let results = black_box(t.query_nearest_k_with(
         //                     black_box(q),
-        //                     black_box(2_usize.pow(log2k)),
+        //                     black_box(k),
         //                     // SAFETY: we are transmuting the reference lifetimes of empty vectors,
         //                     unsafe { std::mem::transmute(&mut container) },
         //                     unsafe { std::mem::transmute(&mut point_vec) },
@@ -72,44 +71,100 @@ fn criterion_benchmark(c: &mut Criterion) {
         //                 tx.send((container, point_vec)).unwrap();
         //             })
         //             .collect();
-        //         drop(v)
         //     })
         // });
-        // group.bench_function(format!("log2(k)={log2k} parallel nonpbc"), |b| {
-        //     b.iter(|| {
-        //         let v = tree
-        //             .query_nearest_k_parallel(black_box(&query), black_box(2_usize.pow(log2k)))
-        //             .unwrap();
-        //         drop(v)
-        //     })
-        // });
-
-        // group.bench_function(format!("log2(k)={log2k} parallel with nonpbc"), |b| {
-        //     b.iter(|| {
-        //         let v = tree
-        //             .query_nearest_k_parallel_with(black_box(&query), black_box(2_usize.pow(log2k)))
-        //             .unwrap();
-        //         drop(v)
-        //     })
-        // });
-
-        let tree = tree.with_boxsize(&BOXSIZE).unwrap();
-        group.bench_function(format!("log2(k)={log2k} pbc"), |b| {
+        group.bench_function(format!("k={k} parallel nonpbc"), |b| {
             b.iter(|| {
-                let v: Vec<_> = black_box(&query)
-                    .par_iter()
-                    .map_with(black_box(&tree), |t, q| {
-                        let results = black_box(
-                            t.query_nearest_k(black_box(q), black_box(2_usize.pow(log2k))),
-                        );
-                        drop(results);
-                    })
-                    .collect();
-                drop(v)
+                tree.query_nearest_k_parallel(black_box(&query), black_box(k))
+                    .unwrap();
             })
         });
 
-        // group.bench_function(format!("log2(k)={log2k} with pbc"), |b| {
+        // group.bench_function(format!("k={k} parallel with nonpbc"), |b| {
+        //     b.iter(|| {
+        //         tree
+        //             .query_nearest_k_parallel_with(black_box(&query), black_box(k))
+        //             .unwrap()
+        //     })
+        // });
+        #[cfg(feature = "no-position")]
+        group.bench_function(format!("k={k} parallel py nonpbc"), |b| {
+            b.iter(|| {
+                let mut distances = Vec::<T>::with_capacity(query.len() * k);
+                let mut indices = Vec::<u64>::with_capacity(query.len() * k);
+                let dist_ptr_usize = distances.as_mut_ptr() as usize;
+                let idx_ptr_usize = indices.as_mut_ptr() as usize;
+                query.par_iter().enumerate().for_each_with(
+                    (dist_ptr_usize, idx_ptr_usize),
+                    |(d, i), (j, q)| {
+                        let result = tree
+                            .query_nearest_k(black_box(&q), black_box(k))
+                            .expect("error occurred during query");
+                        unsafe {
+                            let d = *d as *mut T;
+                            let i = *i as *mut u64;
+                            for kk in 0..k {
+                                *d.add(k * j + kk) = *result.0.get_unchecked(kk);
+                                *i.add(k * j + kk) = *result.1.get_unchecked(kk);
+                            }
+                        }
+                    },
+                );
+                unsafe {
+                    distances.set_len(query.len() * k);
+                    indices.set_len(query.len() * k);
+                }
+            })
+        });
+        #[cfg(feature = "no-position")]
+        group.bench_function(format!("k={k} parallel py buffered nonpbc"), |b| {
+            let mut distances = Vec::<T>::with_capacity(query.len() * k);
+            let mut indices = Vec::<u64>::with_capacity(query.len() * k);
+            let dist_ptr_usize = distances.as_mut_ptr() as usize;
+            let idx_ptr_usize = indices.as_mut_ptr() as usize;
+            b.iter(|| {
+                query.par_iter().enumerate().for_each_with(
+                    (dist_ptr_usize, idx_ptr_usize),
+                    |(d, i), (j, q)| {
+                        let (dists, idxs) = tree
+                            .query_nearest_k(black_box(&q), black_box(k))
+                            .expect("error occurred during query");
+                        unsafe {
+                            let d = *d as *mut T;
+                            let i = *i as *mut u64;
+                            for kk in 0..k {
+                                *d.add(k * j + kk) = *dists.get_unchecked(kk);
+                            }
+                            for kk in 0..k {
+                                *i.add(k * j + kk) = *idxs.get_unchecked(kk);
+                            }
+                        }
+                    },
+                );
+                unsafe {
+                    distances.set_len(query.len() * k);
+                    indices.set_len(query.len() * k);
+                }
+            })
+        });
+
+        let tree = tree.with_boxsize(&BOXSIZE).unwrap();
+        // group.bench_function(format!("k={k} pbc"), |b| {
+        //     b.iter(|| {
+        //         let v: Vec<_> = black_box(&query)
+        //             .par_iter()
+        //             .map_with(black_box(&tree), |t, q| {
+        //                 let results = black_box(
+        //                     t.query_nearest_k(black_box(q), black_box(k)),
+        //                 );
+        //                 drop(results);
+        //             })
+        //             .collect();
+        //         drop(v)
+        //     })
+        // });
+
+        // group.bench_function(format!("k={k} with pbc"), |b| {
         //     let (tx, rx) = crossbeam_channel::bounded(rayon::max_num_threads());
         //     b.iter(|| {
         //         let v: Vec<_> = black_box(&query)
@@ -123,7 +178,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         //                 });
         //                 let results = black_box(t.query_nearest_k_with(
         //                     black_box(q),
-        //                     black_box(2_usize.pow(log2k)),
+        //                     black_box(k),
         //                     // SAFETY: we are transmuting the reference lifetimes of empty vectors,
         //                     unsafe { std::mem::transmute(&mut container) },
         //                     unsafe { std::mem::transmute(&mut point_vec) },
@@ -136,19 +191,17 @@ fn criterion_benchmark(c: &mut Criterion) {
         //     })
         // });
 
-        // group.bench_function(format!("log2(k)={log2k} parallel pbc"), |b| {
-        //     b.iter(|| {
-        //         let v = tree
-        //             .query_nearest_k_parallel(black_box(&query), black_box(2_usize.pow(log2k)))
-        //             .unwrap();
-        //         drop(v)
-        //     })
-        // });
+        group.bench_function(format!("k={k} parallel pbc"), |b| {
+            b.iter(|| {
+                tree.query_nearest_k_parallel(black_box(&query), black_box(k))
+                    .unwrap()
+            })
+        });
 
-        // group.bench_function(format!("log2(k)={log2k} parallel with pbc"), |b| {
+        // group.bench_function(format!("k={k} parallel with pbc"), |b| {
         //     b.iter(|| {
         //         let v = tree
-        //             .query_nearest_k_parallel_with(black_box(&query), black_box(2_usize.pow(log2k)))
+        //             .query_nearest_k_parallel_with(black_box(&query), black_box(k))
         //             .unwrap();
         //         drop(v)
         //     })
