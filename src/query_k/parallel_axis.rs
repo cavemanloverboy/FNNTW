@@ -1,93 +1,166 @@
 use std::fmt::Debug;
 
 use crate::{
-    distance::*,
+    distance::{calc_dist_sq_to_space, new_best_kth_axis},
     point::{Float, Point},
-    utils::{check_point_return, FnntwResult, QueryKResult},
+    utils::{check_point_return, FnntwError, FnntwResult},
     Node, Tree,
 };
 use ordered_float::NotNan;
 
-pub mod container;
-pub mod container_axis;
-pub mod parallel;
-pub mod parallel_axis;
-pub mod parallel_with;
-// pub mod with;
-use container::Container;
+use super::container_axis::ContainerAxis;
 
+use crate::utils::QueryKAxisResult;
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    pub fn query_nearest_k<'q>(
+    #[cfg(all(feature = "parallel", feature = "no-position"))]
+    pub fn query_nearest_k_parallel_axis<'q>(
         &'q self,
-        query: &'q [T; D],
+        queries: &'q [[T; D]],
         k: usize,
-    ) -> FnntwResult<QueryKResult<'t, T, D>, T> {
-        // Check for valid query point
-        let query: &[NotNan<T>; D] = check_point_return(query)?;
+        axis: usize,
+    ) -> FnntwResult<QueryKAxisResult<'t, T, D>, T> {
+        use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+
+        if axis >= D {
+            return Err(FnntwError::InvalidAxis);
+        }
+
+        let mut axes = Vec::with_capacity(queries.len() * k);
+        let mut nonaxes = Vec::with_capacity(queries.len() * k);
+        #[cfg(not(feature = "no-index"))]
+        let mut indices = Vec::with_capacity(queries.len() * k);
+        let ax_ptr_usize = axes.as_mut_ptr() as usize;
+        let nonax_ptr_usize = nonaxes.as_mut_ptr() as usize;
+        #[cfg(not(feature = "no-index"))]
+        let idx_ptr_usize = indices.as_mut_ptr() as usize;
 
         if let Some(ref boxsize) = self.boxsize {
-            // Periodic query
-            Ok(self.query_nearest_k_periodic(query, k, boxsize))
+            queries.into_par_iter().enumerate().try_for_each(
+                |(query_index, query)| -> FnntwResult<_, T> {
+                    // Check for valid query point
+                    let query: &[NotNan<T>; D] = check_point_return(query)?;
+
+                    let (mut container, mut point_vec) = (
+                        ContainerAxis::new(k.min(self.data.len())),
+                        Vec::with_capacity(2 * self.height_hint),
+                    );
+
+                    // Periodic query
+                    self.query_nearest_k_periodic_into_axis(
+                        query,
+                        k,
+                        boxsize,
+                        &mut container,
+                        &mut point_vec,
+                        ax_ptr_usize,
+                        nonax_ptr_usize,
+                        #[cfg(not(feature = "no-index"))]
+                        idx_ptr_usize,
+                        query_index,
+                        axis,
+                    );
+
+                    Ok(())
+                },
+            )?;
         } else {
-            // Nonperiodic query
-            Ok(self.query_nearest_k_nonperiodic(query, k))
+            queries.into_par_iter().enumerate().try_for_each(
+                |(query_index, query)| -> FnntwResult<_, T> {
+                    // Check for valid query point
+                    let query: &[NotNan<T>; D] = check_point_return(query)?;
+
+                    let (mut container, mut point_vec) = (
+                        ContainerAxis::new(k.min(self.data.len())),
+                        Vec::with_capacity(2 * self.height_hint),
+                    );
+                    // Nonperiodic query
+                    self.query_nearest_k_nonperiodic_into_axis(
+                        query,
+                        k,
+                        &mut container,
+                        &mut point_vec,
+                        ax_ptr_usize,
+                        nonax_ptr_usize,
+                        #[cfg(not(feature = "no-index"))]
+                        idx_ptr_usize,
+                        query_index,
+                        axis,
+                    );
+
+                    Ok(())
+                },
+            )?;
         }
+
+        unsafe {
+            axes.set_len(queries.len() * k);
+            nonaxes.set_len(queries.len() * k);
+            #[cfg(not(feature = "no-index"))]
+            indices.set_len(queries.len() * k);
+        }
+
+        Ok((axes, nonaxes))
     }
 
-    fn query_nearest_k_nonperiodic<'q>(
+    fn query_nearest_k_nonperiodic_into_axis<'q>(
         &'q self,
         query: &'q [NotNan<T>; D],
-        k: usize,
-    ) -> QueryKResult<'t, T, D>
-    where
+        _k: usize,
+        container: &mut ContainerAxis<'q, T, D>,
+        points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
+        distances_ptr: usize,
+        indices_ptr: usize,
+        query_index: usize,
+        axis: usize,
+    ) where
         't: 'q,
     {
         // Get reference to the root node
-
-        let current_node: &Node<T, D> = &self.root_node;
-
-        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-        // and distance to their associated space in form of (&usize, T), where usize is
-        // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
-            Vec::with_capacity(self.height_hint);
-
-        // Initialize candidate container with dummy point
-        let mut container = Container::new(k.min(self.input.len()));
-        container.push((T::max_value(), current_node.stem()));
+        let current_node: &'q Node<T, D> = &self.root_node;
+        container.push((
+            (T::max_value(), T::max_value(), T::max_value()),
+            current_node.stem(),
+        ));
 
         // Recurse down (and then up and down) the stem
-        self.check_stem_k(query, current_node, &mut container, &mut points_to_check);
+        self.check_stem_k_axis(query, current_node, container, points_to_check, axis);
 
-        container.index(self.start())
+        // Write to given vector
+        container.index_into(
+            distances_ptr,
+            indices_ptr,
+            query_index,
+            #[cfg(not(feature = "no-index"))]
+            self.start(),
+        );
+        // index into clears!!
     }
 
-    fn query_nearest_k_periodic<'q, 'i>(
+    fn query_nearest_k_periodic_into_axis<'q, 'i>(
         &'q self,
         query: &'q [NotNan<T>; D],
-        k: usize,
+        _k: usize,
         boxsize: &[NotNan<T>; D],
-    ) -> QueryKResult<'t, T, D>
-    where
+        container: &mut ContainerAxis<'q, T, D>,
+        points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
+        distances_ptr: usize,
+        indices_ptr: usize,
+        query_index: usize,
+        axis: usize,
+    ) where
         't: 'q,
     {
-        // Ledger with info about nodes we've touched, namely the parent and sibling nodes
-        // and distance to their associated space in form of (&usize, T), where usize is
-        // the index inside of self.nodes. The root node is checked at the end.
-        let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
-            Vec::with_capacity(self.height_hint);
-
         // First get real image result
-        let mut real_image_container: Container<T, D> = {
+        let mut real_image_container: &mut ContainerAxis<T, D> = {
             // Get reference to the root node
             let current_node: &Node<T, D> = &self.root_node;
-
-            // Initialize candidate container with dummy point
-            let mut container = Container::new(k.min(self.input.len()));
-            container.push((T::max_value(), current_node.stem()));
+            container.push((
+                (T::max_value(), T::max_value(), T::max_value()),
+                current_node.stem(),
+            ));
 
             // Recurse down (and then up and down) the stem
-            self.check_stem_k(query, current_node, &mut container, &mut points_to_check);
+            self.check_stem_k_axis(query, current_node, container, points_to_check, axis);
 
             container
         };
@@ -174,30 +247,39 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             // the index inside of self.nodes. The root node is checked at the end.
             // let mut points_to_check: Vec<(&usize, &Point<T, D>, T)> =
             //     Vec::with_capacity(self.height_hint);
+            // points_to_check.clear();
 
             // Get image result
-            self.check_stem_k(
+            self.check_stem_k_axis(
                 &image,
                 &self.root_node,
                 &mut real_image_container,
-                &mut points_to_check,
+                points_to_check,
+                axis,
             );
         }
 
-        real_image_container.index(self.start())
+        real_image_container.index_into(
+            distances_ptr,
+            indices_ptr,
+            query_index,
+            #[cfg(not(feature = "no-index"))]
+            self.start(),
+        );
     }
 
     /// Upon checking that we are close to some other space during upward traversal of the tree,
     /// this function is called to check candidates in the child space, appending any new candidate spaces
     /// as we go along
-    fn check_child_k<'i, 'o>(
+    fn check_child_k_axis<'i, 'o>(
         &'i self,
         query: &'o [NotNan<T>; D],
         sibling: &usize,
         // check's the parent of the sibling (also our parent)
         stem: &'i Point<T, D>,
-        container: &'o mut Container<'i, T, D>,
+        container: &'o mut ContainerAxis<'i, T, D>,
         points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
+        axis: usize,
     ) where
         'i: 'o,
         't: 'i,
@@ -208,41 +290,43 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             // Sibling is a leaf
             Node::Leaf { points, .. } => {
                 // the stem here is the parent
-                self.check_parent_k(query, stem, container);
-                self.check_leaf_k(query, points.into_iter(), container)
+                self.check_parent_k_axis(query, stem, container, axis);
+                self.check_leaf_k_axis(query, points.into_iter(), container, axis)
             }
 
             // Sibling is a parent (e.g. for unbalanced tree)
             Node::Stem { .. } => {
-                self.check_parent_k(query, stem, container);
-                self.check_stem_k(query, sibling, container, points_to_check)
+                self.check_parent_k_axis(query, stem, container, axis);
+                self.check_stem_k_axis(query, sibling, container, points_to_check, axis)
             }
         }
     }
 
-    fn check_leaf_k<'i, 'o>(
+    fn check_leaf_k_axis<'i, 'o>(
         &self,
         query: &'o [NotNan<T>; D],
         leaf_points: impl Iterator<Item = &'i Point<T, D>>,
-        container: &'o mut Container<'i, T, D>,
+        container: &'o mut ContainerAxis<'i, T, D>,
+        axis: usize,
     ) where
         'i: 'o,
         't: 'i,
     {
         // Check all points in leaf
         for candidate in leaf_points {
-            new_best_kth(query, candidate, container);
+            new_best_kth_axis(query, candidate, container, axis);
         }
     }
 
     /// If sibling is a stem, then we need to recurse back down
 
-    fn check_stem_k<'i, 'o>(
+    fn check_stem_k_axis<'i, 'o>(
         &'i self,
         query: &'o [NotNan<T>; D],
         stem: &'i Node<T, D>,
-        container: &'o mut Container<'i, T, D>,
+        container: &'o mut ContainerAxis<'i, T, D>,
         points_to_check: &'o mut Vec<(&'i usize, &'i Point<T, D>, T)>,
+        axis: usize,
     ) where
         'i: 'o,
         't: 'i,
@@ -269,9 +353,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                             unsafe { self.nodes.get_unchecked(*left) }.get_bounds();
                         let dist_sq_to_space =
                             calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
-                        if dist_sq_to_space <= *container.best_dist2() {
-                            points_to_check.push((left, point, dist_sq_to_space));
-                        }
+                        points_to_check.push((left, point, dist_sq_to_space));
 
                         // Right Branch
                         right
@@ -282,9 +364,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                             unsafe { self.nodes.get_unchecked(*right) }.get_bounds();
                         let dist_sq_to_space =
                             calc_dist_sq_to_space(query, sibling_lower, sibling_upper);
-                        if dist_sq_to_space <= *container.best_dist2() {
-                            points_to_check.push((right, point, dist_sq_to_space));
-                        }
+                        points_to_check.push((right, point, dist_sq_to_space));
 
                         // Left Branch
                         left
@@ -299,26 +379,27 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
 
         // We are now at a leaf; check it
-        self.check_leaf_k(query, current_node.iter(), container);
+        self.check_leaf_k_axis(query, current_node.iter(), container, axis);
 
         // Now we empty out the queue
         while let Some((sibling, parent, dist_sq_to_space)) = points_to_check.pop() {
             let better_dist2 = dist_sq_to_space < *container.best_dist2();
             if better_dist2 {
-                self.check_child_k(query, sibling, parent, container, points_to_check);
+                self.check_child_k_axis(query, sibling, parent, container, points_to_check, axis);
             }
         }
     }
 
-    fn check_parent_k<'i, 'o>(
+    fn check_parent_k_axis<'i, 'o>(
         &self,
         query: &[NotNan<T>; D],
         stem: &'i Point<T, D>,
-        container: &'o mut Container<'i, T, D>,
+        container: &'o mut ContainerAxis<'i, T, D>,
+        axis: usize,
     ) where
         'i: 'o,
         't: 'i,
     {
-        new_best_kth(query, stem, container);
+        new_best_kth_axis(query, stem, container, axis);
     }
 }

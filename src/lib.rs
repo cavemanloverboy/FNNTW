@@ -1,21 +1,26 @@
 #![doc = include_str!("../README.md")]
 
-use ordered_float::NotNan;
+use likely_stable::likely;
+pub use ordered_float::NotNan;
+use point::{Float, Point};
 
 #[cfg(feature = "timing")]
 use std::sync::atomic::Ordering;
 use std::{
-    collections::HashMap,
+    fmt::Debug,
     sync::{Arc, RwLock},
 };
 
 #[cfg(feature = "timing")]
 use num_format::{Locale, ToFormattedString};
 
+mod allocator;
 pub mod distance;
+pub mod moms;
+pub mod point;
 pub mod query;
 pub mod query_k;
-mod utils;
+pub mod utils;
 
 use utils::*;
 
@@ -31,7 +36,7 @@ static STEM_MEDIAN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUs
 #[cfg(feature = "timing")]
 static STEM_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 #[cfg(feature = "timing")]
-static mut TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 const FIRST: bool = true;
 const NOT_FIRST: bool = false;
@@ -40,52 +45,55 @@ const IS_LEFT: bool = true;
 const IS_RIGHT: bool = false;
 
 /// This [`Tree`] struct is the core struct that holds all nodes in the kdtree.
-/// It also contains the hashmap that is used to index the data.
-pub struct Tree<'t, const D: usize> {
-
+pub struct Tree<'t, T: Float, const D: usize> {
     /// Data in the tree. Here for user reference mainly. For example,
     /// to inspect the data that was used to build the tree.
-    #[allow(unused)]
-    input: &'t [[f64; D]],
+    input: &'t [[T; D]],
 
-    /// O(1) lookup table for index of point
-    pub data_index: HashMap<&'t [NotNan<f64>; D], u64>,
+    start: *const [NotNan<T>; D],
 
     /// Unused, but here for future/user reference
     #[allow(unused)]
     pub leafsize: usize,
 
     /// Container of all nodes (stems, leaves), in the tree, except the root node.
-    pub nodes: Vec<Node<'t, D>>,
+    pub nodes: Vec<Node<T, D>>,
 
     /// Approximate height (used for determining some allocation sizes)
     pub height_hint: usize,
 
     /// Root node
-    root_node: Node<'t, D>,
+    root_node: Node<T, D>,
 
     /// Optional boxsize for periodic queries.
-    boxsize: Option<[NotNan<f64>; D]>
+    boxsize: Option<[NotNan<T>; D]>,
+    data: Vec<Point<T, D>>,
 }
 
 #[derive(Debug)]
-pub enum Node<'t, const D: usize> {
+pub enum Node<T: Float, const D: usize> {
     Stem {
         split_dim: usize,
-        point: &'t [NotNan<f64>; D],
+        point: Point<T, D>,
         left: usize,
         right: usize,
-        lower: [NotNan<f64>; D],
-        upper: [NotNan<f64>; D],
+        lower: [NotNan<T>; D],
+        upper: [NotNan<T>; D],
     },
     Leaf {
-        points: Leaf<'t, D>,
-        lower: [NotNan<f64>; D],
-        upper: [NotNan<f64>; D],
+        points: Vec<Point<T, D>>,
+        lower: [NotNan<T>; D],
+        upper: [NotNan<T>; D],
     },
 }
 
-impl<'t, const D: usize> Node<'t, D> {
+unsafe impl<T: Float, const D: usize> Send for Node<T, D> {}
+unsafe impl<T: Float, const D: usize> Sync for Node<T, D> {}
+
+unsafe impl<'t, T: Float, const D: usize> Send for Tree<'t, T, D> {}
+unsafe impl<'t, T: Float, const D: usize> Sync for Tree<'t, T, D> {}
+
+impl<T: Float, const D: usize> Node<T, D> {
     fn is_stem(&self) -> bool {
         match self {
             Node::Stem { .. } => true,
@@ -93,43 +101,29 @@ impl<'t, const D: usize> Node<'t, D> {
         }
     }
 
-    #[cfg(not(feature = "single_ref"))]
-    /// This was here just to test performance vs single ref.
-    /// double ref seems to win (this one is double ref)
-    fn iter<'q>(&'q self) -> impl Iterator<Item = &'q &'t [NotNan<f64>; D]> {
+    /// Iterates through the points in a leaf; panics if called on a stem.
+    fn iter<'q>(&'q self) -> impl Iterator<Item = &'q Point<T, D>> {
         match self {
             Node::Leaf { points, .. } => points.iter(),
             _ => unreachable!("this function should only be used on leaves"),
         }
     }
 
-    #[cfg(feature = "single_ref")]
-    /// This was here just to test performance vs double ref.
-    /// double ref seems to win
-    fn iter(&'t self) -> impl Iterator<Item = &'t [NotNan<f64>; D]> {
+    fn stem<'a>(&'a self) -> &'a Point<T, D> {
         match self {
-            Node::Leaf { points, .. } => points.clone().into_iter(),
-            _ => unreachable!("this function should only be used on leaves"),
-        }
-    }
-
-    fn stem_position(&self) -> &'t [NotNan<f64>; D] {
-        match self {
-            Node::Stem {
-                point: position, ..
-            } => position,
+            Node::Stem { point, .. } => point,
             _ => unreachable!("only to be used on stems"),
         }
     }
 
-    // fn stem_position(&self) -> &'t [NotNan<f64>; D] {
+    // fn stem_position(&self) -> &'t [NotNan<T>; D] {
     //     match self {
     //         Node::Stem { split_dim: .. } => position,
     //         _ => unreachable!("only to be used on stems"),
     //     }
     // }
 
-    fn get_bounds(&'t self) -> (&'t [NotNan<f64>; D], &'t [NotNan<f64>; D]) {
+    fn get_bounds<'q>(&'q self) -> (&'q [NotNan<T>; D], &'q [NotNan<T>; D]) {
         match self {
             Node::Leaf { lower, upper, .. } => (lower, upper),
             Node::Stem { lower, upper, .. } => (lower, upper),
@@ -137,47 +131,45 @@ impl<'t, const D: usize> Node<'t, D> {
     }
 }
 
-type Leaf<'t, const D: usize> = Vec<&'t [NotNan<f64>; D]>;
-
-impl<'t, const D: usize> Tree<'t, D> {
+impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
     /// Create a new FNSTW kdTree [Tree] using a parallel build. The parameter
     /// `par_split_level` specified the depth (during the build) at which the
     /// parallelism begins.
     pub fn new_parallel(
-        input: &'t [[f64; D]],
+        input: &'t [[T; D]],
         leafsize: usize,
         par_split_level: usize,
-    ) -> FnntwResult<Tree<'t, D>> {
-
+    ) -> FnntwResult<Tree<'t, T, D>, T> {
+        // Nonzero Length
+        if input.len() == 0 {
+            return Err(FnntwError::ZeroLengthInputData);
+        }
         // Perform checks for valid data
-        let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
-
-        // This is used to determine the size several allocations
-        let data_len = input.len();
-        let height_hint = ilog2(data_len);
-
-        // Also probably a good idea to keep above 4 anyway.
-        // if leafsize < 4 {
-        //     return Err("Choose a leafsize >= 4");
-        // }
-
-        // Initialize variables for recursive function
-        let split_level: usize = 0;
-        #[cfg(feature = "timing")]
-        let timer = std::time::Instant::now();
-        let vec_ref: &mut [&'t [NotNan<f64>; D]] = &mut data.iter().collect::<Vec<_>>();
-        // let data_index_map = data.iter().zip(0_u64..).collect::<HashMap<_,_>>();
-        #[cfg(feature = "timing")]
-        let initial_vec_ref = timer.elapsed().as_nanos();
-        let nodes = Arc::new(RwLock::new(Vec::with_capacity(size_of_tree(data_len, leafsize))));
-
-        // Build index in the background
         std::thread::scope(|s| {
-            let data_idx_handle =
-                s.spawn(move || data.iter().zip(0_u64..).collect::<HashMap<_, _>>());
+            let handle = s.spawn(|| check_data(input));
+
+            // This is used to determine the size several allocations
+            let data_len = input.len();
+            let height_hint = data_len.ilog2() as usize;
+
+            // Initialize variables for recursive function
+            let split_level: usize = 0;
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let mut data: Vec<Point<T, D>> =
+                unsafe { std::mem::transmute::<&[[T; D]], &[[NotNan<T>; D]]>(input) }
+                    .into_iter()
+                    .map(|ptr| Point { ptr })
+                    .collect();
+            let vec_ref: &mut [Point<T, D>] = &mut data;
+            #[cfg(feature = "timing")]
+            let initial_vec_ref = timer.elapsed().as_nanos();
+            let nodes = Arc::new(RwLock::new(Vec::with_capacity(size_of_tree(
+                data_len, leafsize,
+            ))));
 
             // Run recursive build
-            Tree::<'t, D>::build_nodes_parallel::<FIRST, true>(
+            Tree::<'t, T, D>::build_nodes_parallel::<FIRST, true>(
                 vec_ref,
                 split_level,
                 leafsize,
@@ -189,14 +181,14 @@ impl<'t, const D: usize> Tree<'t, D> {
 
             #[cfg(feature = "timing")]
             {
-                // safety: safe because no other thread can hold this mutable reference
-                unsafe {
-                    *TOTAL.get_mut() = initial_vec_ref as usize
+                TOTAL.store(
+                    initial_vec_ref as usize
                         + LEAF_VEC_ALLOC.load(Ordering::SeqCst)
                         + LEAF_WRITE.load(Ordering::SeqCst)
                         + STEM_MEDIAN.load(Ordering::SeqCst)
-                        + STEM_WRITE.load(Ordering::SeqCst);
-                }
+                        + STEM_WRITE.load(Ordering::SeqCst),
+                    Ordering::Relaxed,
+                );
 
                 // Load atomics
                 let total = TOTAL.load(Ordering::SeqCst);
@@ -245,12 +237,23 @@ impl<'t, const D: usize> Tree<'t, D> {
             }
 
             // Unwrap the Arc
-            let mut nodes = Arc::try_unwrap(nodes).unwrap().into_inner().unwrap();
-            let root_node = nodes.pop().expect("root node should exist");
+            let mut nodes = unsafe {
+                Arc::try_unwrap(nodes)
+                    .unwrap_unchecked()
+                    .into_inner()
+                    .unwrap_unchecked()
+            };
+            let root_node = unsafe { nodes.pop().unwrap_unchecked() };
+
+            // Ensure we've checked data before returning
+            unsafe { handle.join().unwrap_unchecked()? };
+
+            let start = input.as_ptr() as *const [NotNan<T>; D];
 
             Ok(Tree {
+                data,
                 input,
-                data_index: data_idx_handle.join().unwrap(),
+                start,
                 leafsize,
                 nodes,
                 height_hint,
@@ -262,12 +265,12 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     // A recursive private function.
     fn build_nodes_parallel<'a, const F: bool, const L: bool>(
-        subset: &'a mut [&'t [NotNan<f64>; D]],
+        subset: &'a mut [Point<T, D>],
         mut split_level: usize,
         leafsize: usize,
-        nodes: Arc<RwLock<Vec<Node<'t, D>>>>,
-        level_up_bounds: Option<([NotNan<f64>; D], [NotNan<f64>; D])>,
-        level_up_split_val: Option<&'t NotNan<f64>>,
+        nodes: Arc<RwLock<Vec<Node<T, D>>>>,
+        level_up_bounds: Option<([NotNan<T>; D], [NotNan<T>; D])>,
+        level_up_split_val: Option<&'t NotNan<T>>,
         par_split_level: usize,
     ) -> usize {
         // Increment split level if not first
@@ -285,12 +288,12 @@ impl<'t, const D: usize> Tree<'t, D> {
         let (lower, upper) = {
             if F {
                 // If this is the first iteration, we must find the bounds of the data before median
-                subset.iter().fold(
-                    // safety: valid f64 consts
+                subset.into_iter().fold(
+                    // safety: valid T consts
                     unsafe {
                         (
-                            [NotNan::new_unchecked(std::f64::MAX); D],
-                            [NotNan::new_unchecked(std::f64::MIN); D],
+                            [NotNan::new_unchecked(T::max_value()); D],
+                            [NotNan::new_unchecked(T::min_value()); D],
                         )
                     },
                     |(mut lo, mut hi), point| {
@@ -310,9 +313,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             } else {
                 // If not the first iteration, get bounds from parent and modify
                 // the split_dim component
-                let (mut lo, mut hi) = level_up_bounds
-                    .map(|(lo, hi)| (lo.clone(), hi.clone()))
-                    .unwrap();
+                let (mut lo, mut hi) = unsafe { level_up_bounds.unwrap_unchecked() };
 
                 // Modify parent split_dim component
                 let parent_split_dim = (split_level - 1) % D;
@@ -320,176 +321,175 @@ impl<'t, const D: usize> Tree<'t, D> {
                 unsafe {
                     if L {
                         // If we are left, then our upper bound got cut off
-                        *hi.get_unchecked_mut(parent_split_dim) = *level_up_split_val.unwrap();
+                        *hi.get_unchecked_mut(parent_split_dim) =
+                            *level_up_split_val.unwrap_unchecked();
                     } else {
                         // If we are right, then our lower bound got cut off
-                        *lo.get_unchecked_mut(parent_split_dim) = *level_up_split_val.unwrap();
+                        *lo.get_unchecked_mut(parent_split_dim) =
+                            *level_up_split_val.unwrap_unchecked();
                     }
                 }
                 (lo, hi)
             }
         };
 
-        match is_leaf {
-            true => {
+        if is_leaf {
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let leaf = Node::Leaf {
+                points: subset.to_vec(),
+                lower,
+                upper,
+            };
+            #[cfg(feature = "timing")]
+            let vec_alloc = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            LEAF_VEC_ALLOC.fetch_add(vec_alloc as usize, Ordering::SeqCst);
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let leaf = Node::Leaf {
-                    points: subset.to_vec(),
-                    lower,
-                    upper,
-                };
-                #[cfg(feature = "timing")]
-                let vec_alloc = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                LEAF_VEC_ALLOC.fetch_add(vec_alloc as usize, Ordering::SeqCst);
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let mut node_lock = nodes.write().unwrap();
+            let leaf_index = node_lock.len();
+            node_lock.push(leaf);
+            #[cfg(feature = "timing")]
+            let write_time = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            LEAF_WRITE.fetch_add(write_time as usize, Ordering::SeqCst);
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let mut node_lock = nodes.write().unwrap();
-                let leaf_index = node_lock.len();
-                node_lock.push(leaf);
-                #[cfg(feature = "timing")]
-                let write_time = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                LEAF_WRITE.fetch_add(write_time as usize, Ordering::SeqCst);
+            leaf_index
+        } else {
+            // Calculate index of median
+            // let sub_len = subset.len();
+            // let median_index = sub_len / 2;
 
-                leaf_index
-            }
-            false => {
-                // Calculate index of median
-                let sub_len = subset.len();
-                let median_index = sub_len / 2 - ((sub_len + 1) % 2);
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            // Select median in this subset based on split_dim component
+            // let (left, median, right) =
+            //         subset.select_nth_unstable_by_key(median_index, |a| unsafe {
+            //             // safety: made safe by const generic
+            //             *a.get_unchecked(split_dim)
+            //         }
+            //     );
+            let (left, median, right) = moms::moms_seq(subset, None, split_dim);
+            // safety: made safe by const generic
+            let split_val = unsafe { median.get_unchecked(split_dim) };
+            #[cfg(feature = "timing")]
+            let stem_median = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                // Select median in this subset based on split_dim component
-                let (left, median, right) = subset
-                    .select_nth_unstable_by(median_index, |a, b| unsafe {
-                        // safety: made safe by const generic
-                        a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
+            let mut left_idx = 0;
+            let mut right_idx = 0;
+            if split_level < par_split_level {
+                //&& par_split_level > 0 {
+                // We are at a level over which user has specified
+                // we should parallelize the build. Handle in scoped threads
+                let left_arc = Arc::clone(&nodes);
+                let right_arc = Arc::clone(&nodes);
+
+                std::thread::scope(|s| {
+                    let left_handle = s.spawn(|| {
+                        Tree::build_nodes_parallel::<NOT_FIRST, IS_LEFT>(
+                            left,
+                            split_level,
+                            leafsize,
+                            left_arc,
+                            Some((lower, upper)),
+                            Some(split_val),
+                            par_split_level,
+                        )
                     });
-                // safety: made safe by const generic
-                let split_val = unsafe { median.get_unchecked(split_dim) };
-                #[cfg(feature = "timing")]
-                let stem_median = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
-
-                let mut left_idx = 0;
-                let mut right_idx = 0;
-                if split_level == par_split_level && par_split_level > 0 {
-                    std::thread::scope(|s| {
-
-                        // We are at the level over which user has specified
-                        // we should parallelize the build. Handle in scoped threads
-                        let left_arc = Arc::clone(&nodes);
-                        let right_arc = Arc::clone(&nodes);
-                        let left_handle = s.spawn(|| {
-                            Tree::build_nodes_parallel::<NOT_FIRST, IS_LEFT>(
-                                left,
-                                split_level,
-                                leafsize,
-                                left_arc,
-                                Some((lower, upper)),
-                                Some(split_val),
-                                par_split_level,
-                            )
-                        });
-
-                        let right_handle = s.spawn(|| {
-                            Tree::build_nodes_parallel::<NOT_FIRST, IS_RIGHT>(
-                                right,
-                                split_level,
-                                leafsize,
-                                right_arc,
-                                Some((lower, upper)),
-                                Some(split_val),
-                                par_split_level,
-                            )
-                        });
-
-                        left_idx = left_handle.join().unwrap();
-                        right_idx = right_handle.join().unwrap();
-                    });
-                } else {
-                    left_idx = Tree::build_nodes_parallel::<NOT_FIRST, IS_LEFT>(
-                        left,
-                        split_level,
-                        leafsize,
-                        Arc::clone(&nodes),
-                        Some((lower, upper)),
-                        Some(split_val),
-                        par_split_level,
-                    );
 
                     right_idx = Tree::build_nodes_parallel::<NOT_FIRST, IS_RIGHT>(
                         right,
                         split_level,
                         leafsize,
-                        Arc::clone(&nodes),
+                        right_arc,
                         Some((lower, upper)),
                         Some(split_val),
                         par_split_level,
                     );
-                }
 
-                let stem = Node::Stem {
-                    split_dim,
-                    point: median,
-                    left: left_idx,
-                    right: right_idx,
-                    lower,
-                    upper,
-                };
+                    left_idx = left_handle.join().unwrap();
+                });
+            } else {
+                left_idx = Tree::build_nodes_parallel::<NOT_FIRST, IS_LEFT>(
+                    left,
+                    split_level,
+                    leafsize,
+                    Arc::clone(&nodes),
+                    Some((lower, upper)),
+                    Some(split_val),
+                    par_split_level,
+                );
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let mut node_lock = nodes.write().unwrap();
-                let stem_index = node_lock.len();
-                node_lock.push(stem);
-                drop(node_lock);
-                #[cfg(feature = "timing")]
-                let stem_write = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
-
-                stem_index
+                right_idx = Tree::build_nodes_parallel::<NOT_FIRST, IS_RIGHT>(
+                    right,
+                    split_level,
+                    leafsize,
+                    Arc::clone(&nodes),
+                    Some((lower, upper)),
+                    Some(split_val),
+                    par_split_level,
+                );
             }
+
+            let stem = Node::Stem {
+                split_dim,
+                point: *median,
+                left: left_idx,
+                right: right_idx,
+                lower,
+                upper,
+            };
+
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let mut node_lock = nodes.write().unwrap();
+            let stem_index = node_lock.len();
+            node_lock.push(stem);
+            drop(node_lock);
+            #[cfg(feature = "timing")]
+            let stem_write = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
+
+            stem_index
         }
     }
 
     /// Create a new FNSTW kdTree [Tree] using a nonparallel build.
-    pub fn new(
-        input: &'t [[f64; D]],
-        leafsize: usize,
-    ) -> FnntwResult<Tree<'t, D>> {
-        
+    pub fn new(input: &'t [[T; D]], leafsize: usize) -> FnntwResult<Tree<'t, T, D>, T> {
         // Perform checks for valid data
-        let data: &'t [[NotNan<f64>; D]] = check_data(input)?;
-
-        // This is used to determine the size several allocations
-        let data_len = input.len();
-        let height_hint = ilog2(data_len);
-
-        // Initialize variables for recursive function
-        let split_level: usize = 0;
-        #[cfg(feature = "timing")]
-        let timer = std::time::Instant::now();
-        let vec_ref: &mut [&'t [NotNan<f64>; D]] = &mut data.iter().collect::<Vec<_>>();
-        // let data_index_map = data.iter().zip(0_u64..).collect::<HashMap<_,_>>();
-        #[cfg(feature = "timing")]
-        let initial_vec_ref = timer.elapsed().as_nanos();
-        let mut nodes = vec![];
-
-        // Build index in the background
+        if input.len() == 0 {
+            return Err(FnntwError::ZeroLengthInputData);
+        }
         std::thread::scope(|s| {
-            let data_idx_handle =
-                s.spawn(move || data.iter().zip(0_u64..).collect::<HashMap<_, _>>());
+            // SAFETY: the thread is joined within this
+            let handle = s.spawn(|| check_data(input));
+
+            // This is used to determine the size several allocations
+            let data_len = input.len();
+            let height_hint = data_len.ilog2() as usize;
+
+            // Initialize variables for recursive function
+            let split_level: usize = 0;
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let mut data: Vec<Point<T, D>> =
+                unsafe { std::mem::transmute::<&'t [[T; D]], &'t [[NotNan<T>; D]]>(input) }
+                    .into_iter()
+                    .map(|ptr| Point { ptr })
+                    .collect();
+            let vec_ref: &mut [Point<T, D>] = data.as_mut_slice();
+
+            #[cfg(feature = "timing")]
+            let initial_vec_ref = timer.elapsed().as_nanos();
+            let mut nodes = Vec::with_capacity(size_of_tree(data_len, leafsize));
 
             // Run recursive build
-            Tree::<'t, D>::build_nodes::<FIRST, true>(
+            Tree::<'t, T, D>::build_nodes::<FIRST, true>(
                 vec_ref,
                 split_level,
                 leafsize,
@@ -500,14 +500,14 @@ impl<'t, const D: usize> Tree<'t, D> {
 
             #[cfg(feature = "timing")]
             {
-                // safe because no other thread can hold this mutable reference
-                unsafe {
-                    *TOTAL.get_mut() = initial_vec_ref as usize
+                TOTAL.store(
+                    initial_vec_ref as usize
                         + LEAF_VEC_ALLOC.load(Ordering::SeqCst)
                         + LEAF_WRITE.load(Ordering::SeqCst)
                         + STEM_MEDIAN.load(Ordering::SeqCst)
-                        + STEM_WRITE.load(Ordering::SeqCst);
-                }
+                        + STEM_WRITE.load(Ordering::SeqCst),
+                    Ordering::Relaxed,
+                );
 
                 // Load atomics
                 let total = TOTAL.load(Ordering::SeqCst);
@@ -555,11 +555,17 @@ impl<'t, const D: usize> Tree<'t, D> {
                 println!("TOTAL = {}\n", total_str);
             }
 
-            let root_node: Node<D> = nodes.pop().expect("root node should exist");
+            let root_node: Node<T, D> = nodes.pop().expect("root node should exist");
+
+            // ensure we've checked data before returning
+            handle.join().unwrap()?;
+
+            let start = input.as_ptr() as *const [NotNan<T>; D];
 
             Ok(Tree {
+                data,
                 input,
-                data_index: data_idx_handle.join().unwrap(),
+                start,
                 leafsize,
                 nodes,
                 height_hint,
@@ -571,12 +577,12 @@ impl<'t, const D: usize> Tree<'t, D> {
 
     // A recursive private function.
     fn build_nodes<'a, const F: bool, const L: bool>(
-        subset: &'a mut [&'t [NotNan<f64>; D]],
+        subset: &'a mut [Point<T, D>],
         mut split_level: usize,
         leafsize: usize,
-        nodes: &mut Vec<Node<'t, D>>,
-        level_up_bounds: Option<([NotNan<f64>; D], [NotNan<f64>; D])>,
-        level_up_split_val: Option<&'t NotNan<f64>>,
+        nodes: &mut Vec<Node<T, D>>,
+        level_up_bounds: Option<([NotNan<T>; D], [NotNan<T>; D])>,
+        level_up_split_val: Option<&'t NotNan<T>>,
     ) -> usize {
         // Increment split level if not first
         if !F {
@@ -593,12 +599,12 @@ impl<'t, const D: usize> Tree<'t, D> {
         let (lower, upper) = {
             if F {
                 // If this is the first iteration, we must find the bounds of the data before median
-                subset.iter().fold(
-                    // safety: f64 consts are always valid
+                subset.into_iter().fold(
+                    // safety: T consts are always valid
                     unsafe {
                         (
-                            [NotNan::new_unchecked(std::f64::MAX); D],
-                            [NotNan::new_unchecked(std::f64::MIN); D],
+                            [NotNan::new_unchecked(T::max_value()); D],
+                            [NotNan::new_unchecked(T::min_value()); D],
                         )
                     },
                     |(mut lo, mut hi), point| {
@@ -618,9 +624,7 @@ impl<'t, const D: usize> Tree<'t, D> {
             } else {
                 // If not the first iteration, get bounds from parent and modify
                 // the split_dim component
-                let (mut lo, mut hi) = level_up_bounds
-                    .map(|(lo, hi)| (lo.clone(), hi.clone()))
-                    .unwrap();
+                let (mut lo, mut hi) = unsafe { level_up_bounds.unwrap_unchecked() };
 
                 // Modify parent split_dim component
                 let parent_split_dim = (split_level - 1) % D;
@@ -628,98 +632,98 @@ impl<'t, const D: usize> Tree<'t, D> {
                 unsafe {
                     if L {
                         // If we are left, then our upper bound got cut off
-                        *hi.get_unchecked_mut(parent_split_dim) = *level_up_split_val.unwrap();
+                        *hi.get_unchecked_mut(parent_split_dim) =
+                            *level_up_split_val.unwrap_unchecked();
                     } else {
                         // If we are right, then our lower bound got cut off
-                        *lo.get_unchecked_mut(parent_split_dim) = *level_up_split_val.unwrap();
+                        *lo.get_unchecked_mut(parent_split_dim) =
+                            *level_up_split_val.unwrap_unchecked();
                     }
                 }
                 (lo, hi)
             }
         };
 
-        match is_leaf {
-            true => {
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let leaf = Node::Leaf {
-                    points: subset.to_vec(),
-                    lower,
-                    upper,
-                };
-                #[cfg(feature = "timing")]
-                let vec_alloc = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                LEAF_VEC_ALLOC.fetch_add(vec_alloc as usize, Ordering::SeqCst);
+        if is_leaf {
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let leaf = Node::Leaf {
+                points: subset.to_vec(),
+                lower,
+                upper,
+            };
+            #[cfg(feature = "timing")]
+            let vec_alloc = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            LEAF_VEC_ALLOC.fetch_add(vec_alloc as usize, Ordering::SeqCst);
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let leaf_index = nodes.len();
-                nodes.push(leaf);
-                #[cfg(feature = "timing")]
-                let write_time = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                LEAF_WRITE.fetch_add(write_time as usize, Ordering::SeqCst);
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let leaf_index = nodes.len();
+            nodes.push(leaf);
+            #[cfg(feature = "timing")]
+            let write_time = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            LEAF_WRITE.fetch_add(write_time as usize, Ordering::SeqCst);
 
-                leaf_index
-            }
-            false => {
-                // Calculate index of median
-                let sub_len = subset.len();
-                let median_index = sub_len / 2 - ((sub_len + 1) % 2);
+            leaf_index
+        } else {
+            // Calculate index of median
+            // let sub_len = subset.len();
+            // let median_index = sub_len / 2;
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                // Select median in this subset based on split_dim component
-                let (left, median, right) = subset
-                    .select_nth_unstable_by(median_index, |a, b| unsafe {
-                        // safety: made safe by const generic
-                        a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
-                    });
-                // safety: made safe by const generic
-                let split_val = unsafe { median.get_unchecked(split_dim) };
-                #[cfg(feature = "timing")]
-                let stem_median = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            // Select median in this subset based on split_dim component
+            // let (left, median, right) =
+            //     subset.select_nth_unstable_by_key(median_index, |a| unsafe {
+            //         // safety: made safe by const generic
+            //         *a.get_unchecked(split_dim)
+            //     });
+            let (left, median, right) = moms::moms_seq(subset, None, split_dim);
+            // safety: made safe by const generic
+            let split_val = unsafe { median.get_unchecked(split_dim) };
+            #[cfg(feature = "timing")]
+            let stem_median = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            STEM_MEDIAN.fetch_add(stem_median as usize, Ordering::SeqCst);
 
-                let left_handle = Tree::build_nodes::<NOT_FIRST, IS_LEFT>(
-                    left,
-                    split_level,
-                    leafsize,
-                    nodes,
-                    Some((lower, upper)),
-                    Some(split_val),
-                );
-                let right_handle = Tree::build_nodes::<NOT_FIRST, IS_RIGHT>(
-                    right,
-                    split_level,
-                    leafsize,
-                    nodes,
-                    Some((lower, upper)),
-                    Some(split_val),
-                );
+            let left_handle = Tree::build_nodes::<NOT_FIRST, IS_LEFT>(
+                left,
+                split_level,
+                leafsize,
+                nodes,
+                Some((lower, upper)),
+                Some(split_val),
+            );
+            let right_handle = Tree::build_nodes::<NOT_FIRST, IS_RIGHT>(
+                right,
+                split_level,
+                leafsize,
+                nodes,
+                Some((lower, upper)),
+                Some(split_val),
+            );
 
-                let stem = Node::Stem {
-                    split_dim,
-                    point: median,
-                    left: left_handle,
-                    right: right_handle,
-                    lower,
-                    upper,
-                };
+            let stem = Node::Stem {
+                split_dim,
+                point: *median,
+                left: left_handle,
+                right: right_handle,
+                lower,
+                upper,
+            };
 
-                #[cfg(feature = "timing")]
-                let timer = std::time::Instant::now();
-                let stem_index = nodes.len();
-                nodes.push(stem);
-                #[cfg(feature = "timing")]
-                let stem_write = timer.elapsed().as_nanos();
-                #[cfg(feature = "timing")]
-                STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
+            #[cfg(feature = "timing")]
+            let timer = std::time::Instant::now();
+            let stem_index = nodes.len();
+            nodes.push(stem);
+            #[cfg(feature = "timing")]
+            let stem_write = timer.elapsed().as_nanos();
+            #[cfg(feature = "timing")]
+            STEM_WRITE.fetch_add(stem_write as usize, Ordering::SeqCst);
 
-                stem_index
-            }
+            stem_index
         }
     }
 
@@ -729,39 +733,42 @@ impl<'t, const D: usize> Tree<'t, D> {
         self.nodes.len() + 1
     }
 
+    fn start(&self) -> *const [NotNan<T>; D] {
+        self.start
+    }
 
     /// Set the boxsize used for periodic queries
-    pub fn with_boxsize(
-        mut self,
-        boxsize: &[f64; D],
-    ) -> FnntwResult<Self> {
-        
+    pub fn with_boxsize(mut self, boxsize: &[T; D]) -> FnntwResult<Self, T> {
         // Get lower and upper bounds of data
         let (lower, upper) = self.root_node.get_bounds();
 
         // Check that the data bounding box is in R_+^n
         for component in lower {
             if component.is_sign_negative() {
-                return Err(FnntwError::NegativeDataPeriodicQuery)
-            } else if component.is_infinite() || component.is_nan() || component.is_subnormal() {
-                return Err(FnntwError::InvalidBoxsize)
+                return Err(FnntwError::NegativeDataPeriodicQuery);
+            } else if component.is_infinite() || component.is_nan() {
+                return Err(FnntwError::InvalidBoxsize);
             }
         }
 
         // Check that the specified boxsize encompasses the data
         for i in 0..D {
             if *upper[i] > boxsize[i] {
-                return Err(FnntwError::SmallBoxsize)
-            } else if upper[i].is_infinite() || upper[i].is_nan() || upper[i].is_subnormal() {
-                return Err(FnntwError::InvalidBoxsize)
+                return Err(FnntwError::SmallBoxsize);
+            } else if boxsize[i].is_infinite() || boxsize[i].is_nan() {
+                return Err(FnntwError::InvalidBoxsize);
             }
         }
 
         // safety: just checked all properties that that NotNan assumes
         unsafe {
-            self.boxsize = Some(std::mem::transmute::<&[f64; D], &[NotNan<f64>; D]>(boxsize).clone());
+            self.boxsize = Some(std::mem::transmute::<&[T; D], &[NotNan<T>; D]>(boxsize).clone());
         }
         Ok(self)
+    }
+
+    pub fn get_data(&self) -> &[[T; D]] {
+        self.input
     }
 }
 
@@ -780,9 +787,7 @@ mod tests {
                 fn test_name() {
                     let leafsize = 16;
 
-                    let data: Vec<_> = (0..leafsize)
-                        .map(|x| [x as f64; $d])
-                        .collect();
+                    let data: Vec<_> = (0..leafsize).map(|x| [x as f64; $d]).collect();
 
                     let tree = Tree::new(&data, leafsize).unwrap();
                     assert_eq!(tree.size(), 1);
@@ -799,15 +804,9 @@ mod tests {
     #[test]
     fn test_make_1dtree_with_size_three() {
         let data: Vec<[f64; 1]> = [
-            [(); 32]
-                .map(|_| [0.1_f64])
-                .as_ref(),
-            [(); 1]
-                .map(|_| [0.5_f64])
-                .as_ref(),
-            [(); 32]
-                .map(|_| [0.9_f64])
-                .as_ref(),
+            [(); 32].map(|_| [0.1_f64]).as_ref(),
+            [(); 1].map(|_| [0.5_f64]).as_ref(),
+            [(); 32].map(|_| [0.9_f64]).as_ref(),
         ]
         .concat();
 
@@ -818,26 +817,20 @@ mod tests {
     }
 }
 
-pub fn ilog2(x: usize) -> usize {
-    (x as f64).log2() as usize
-}
-
-
 fn size_of_tree(datalen: usize, leafsize: usize) -> usize {
-    if datalen == 0 {
-        0
-    } else if datalen <= leafsize {
-        1
-    } else {
+    if likely(datalen > leafsize) {
         let left = datalen / 2 - 1;
         let right = datalen / 2 - datalen % 2;
-        1 + size_of_tree(left, leafsize) + size_of_tree(right, leafsize) 
+        1 + size_of_tree(left, leafsize) + size_of_tree(right, leafsize)
+    } else if datalen == 0 {
+        0
+    } else {
+        1
     }
 }
 
 #[test]
 fn test_size_of_tree() {
-
     //   1
     // 2   2
     let datalen = 5;

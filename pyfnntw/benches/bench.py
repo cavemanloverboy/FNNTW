@@ -22,7 +22,7 @@ for trial in range(1-WARMUP,TRIALS+1):
 
         # Build tree
         start = time()
-        tree = pyfnntw.Tree(data, 32, 1)
+        tree = pyfnntw.Treef64(data, 32, 3)
         build_time = (time() - start) * 1000
         trial_build_time += build_time
 

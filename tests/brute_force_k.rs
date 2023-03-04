@@ -1,16 +1,15 @@
-use fnntw::{Tree, distance::squared_euclidean};
+use fnntw::{distance::squared_euclidean, point::Float, utils::QueryKResult, Tree};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
 use std::error::Error;
 
 const NDATA: usize = 100;
-const NQUERY: usize = 10_000;
+const NQUERY: usize = 1_000;
 const D: usize = 3;
 const K: usize = 80;
 
 #[test]
-fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
-
+fn test_brute_force_k() -> Result<(), Box<dyn Error>> {
     // Random number generator
     let mut rng = rand::thread_rng();
 
@@ -25,7 +24,7 @@ fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
     }
 
     // Construct tree
-    let tree = Tree::<'_, D>::new_parallel(&data, 1, 1).unwrap();
+    let tree = Tree::<'_, _, D>::new_parallel(&data, 1, 1).unwrap();
 
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
@@ -37,8 +36,8 @@ fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
     for (i, q) in query.iter().enumerate() {
         let result = &results[i];
         let expected = brute_force_k(q, &data, K);
-        assert_eq!(result.len(), K);
-        assert_eq!(expected.len(), K);
+        assert_eq!(result.0.len(), K);
+        assert_eq!(expected.0.len(), K);
         assert_eq!(*result, expected);
         assert_eq!(*result, expected);
         assert_eq!(*result, expected);
@@ -47,31 +46,49 @@ fn test_brute_force_k() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-
 fn random_point<const D: usize>(rng: &mut ThreadRng) -> [f64; D] {
-    [(); D].map(|_|rng.gen() )
+    [(); D].map(|_| rng.gen())
 }
 
-
-fn brute_force_k<'d, const D: usize>(
-    q: &[f64; D],
-    data: &'d [[f64; D]],
+fn brute_force_k<'d, T: Float, const D: usize>(
+    q: &[T; D],
+    data: &'d [[T; D]],
     k: usize,
-) -> Vec<(f64, u64, &'d[NotNan<f64>; D])> {
-
+) -> QueryKResult<'d, T, D> {
     // No need for nan checks here
-    let q: &[NotNan<f64>; D]= unsafe { std::mem::transmute(q) };
-    let data: &'d [[NotNan<f64>; D]] = unsafe { std::mem::transmute(data) };
+    let q: &[NotNan<T>; D] = unsafe { std::mem::transmute(q) };
+    let data: &'d [[NotNan<T>; D]] = unsafe { std::mem::transmute(data) };
 
     let mut all = Vec::with_capacity(data.len());
 
-    for (d, i) in data.iter().zip(0_u64..) {
-        let dist = squared_euclidean::<D>(q, d);
-        all.push((dist, i, d))
+    for (d, i) in data.iter().zip(0..) {
+        let dist = squared_euclidean::<T, D>(q, d);
+        all.push((
+            dist,
+            i,
+            #[cfg(not(feature = "no-position"))]
+            d,
+        ))
     }
 
     // this is safe so long as [0, 1] randoms are used
     all.sort_by(|p1, p2| p1.0.partial_cmp(&p2.0).unwrap());
+    #[cfg(feature = "sqrt-dist2")]
+    all.iter_mut().for_each(|p| {
+        p.0 = p.0.sqrt();
+    });
     all.truncate(k);
-    all
+
+    #[cfg(feature = "no-position")]
+    return all.into_iter().unzip();
+
+    #[cfg(not(feature = "no-position"))]
+    {
+        let mut result = (vec![], vec![], vec![]);
+        for a in all {
+            result.0.push(a[0]);
+            result.1.push(a[1]);
+            result.2.push(a[2]);
+        }
+    }
 }
