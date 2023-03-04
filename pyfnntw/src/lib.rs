@@ -1,6 +1,9 @@
-use fnntw::point::Float;
 use fnntw::Tree as FNNTWTree;
-use ndarray::Array2;
+use fnntw::{
+    point::Float,
+    utils::{FnntwResult, QueryKResult},
+};
+use ndarray::{Array2, ArrayD};
 use numpy::*;
 use ouroboros::*;
 use pyo3::exceptions::PyValueError;
@@ -134,27 +137,42 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             slf: PyRef<'_, Self>,
             query: PyReadonlyArray2<'_, f32>,
             k: Option<usize>,
-        ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-            if k == Some(1) || k.is_none() {
-                let (distances, indices) = slf.0.query(query.as_array())?;
-                let distances = Array1::from_vec(distances);
-                let indices = Array1::from_vec(indices);
+            axis: Option<usize>,
+        ) -> PyResult<(PyObject, PyObject)> {
+            if let Some(axis) = axis {
+                let k = k.unwrap_or(1);
+                let (axis, nonaxis) = slf.0.query_k_axis(query.as_array(), k, axis)?;
+                let distances =
+                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), axis) };
+                let indices =
+                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), nonaxis) };
                 Ok((
-                    distances.to_pyarray(slf.py()).into(),
-                    indices.to_pyarray(slf.py()).into(),
+                    distances.into_pyarray(slf.py()).into(),
+                    indices.into_pyarray(slf.py()).into(),
                 ))
             } else {
-                let k = k.unwrap();
-                let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
-                // SAFETY: the shape has been checked aldready
-                let distances =
-                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), distances) };
-                let indices =
-                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), indices) };
-                Ok((
-                    distances.to_pyarray(slf.py()).into(),
-                    indices.to_pyarray(slf.py()).into(),
-                ))
+                if k == Some(1) || k.is_none() {
+                    let (distances, indices) = slf.0.query(query.as_array())?;
+                    let distances = Array1::from_vec(distances);
+                    let indices = Array1::from_vec(indices);
+                    Ok((
+                        distances.into_pyarray(slf.py()).into(),
+                        indices.into_pyarray(slf.py()).into(),
+                    ))
+                } else {
+                    let k = k.unwrap();
+                    let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
+                    // SAFETY: the shape has been checked aldready
+                    let distances = unsafe {
+                        Array2::from_shape_vec_unchecked((query.shape()[0], k), distances)
+                    };
+                    let indices =
+                        unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), indices) };
+                    Ok((
+                        distances.into_pyarray(slf.py()).into(),
+                        indices.into_pyarray(slf.py()).into(),
+                    ))
+                }
             }
         }
     }
@@ -273,31 +291,77 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             }
         }
 
-        fn query(
+        fn query<'py>(
             slf: PyRef<'_, Self>,
             query: PyReadonlyArray2<'_, f64>,
             k: Option<usize>,
-        ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-            if k == Some(1) || k.is_none() {
-                let (distances, indices) = slf.0.query(query.as_array())?;
-                let distances = Array1::from_vec(distances);
-                let indices = Array1::from_vec(indices);
+            axis: Option<usize>,
+            py: Python<'py>,
+        ) -> PyResult<(PyObject, PyObject)> {
+            // if k == Some(1) || k.is_none() {
+            //     let (distances, indices) = slf.0.query(query.as_array())?;
+            //     // let distances = Array1::from_vec(distances);
+            //     // let indices = Array1::from_vec(indices);
+            //     // Ok((
+            //     //     distances.into_pyarray(slf.py()).into(),
+            //     //     indices.into_pyarray(slf.py()).into(),
+            //     // ))
+            //     let distances =
+            //         unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], 1), distances) };
+            //     let indices =
+            //         unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], 1), indices) };
+            //     Ok((
+            //         distances.into_pyarray(py).into(),
+            //         indices.into_pyarray(py).into(),
+            //     ))
+            // } else {
+            //     let k = k.unwrap();
+            //     let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
+            //     // SAFETY: the shape has been checked aldready
+            //     let distances =
+            //         unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), distances) };
+            //     let indices =
+            //         unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), indices) };
+            //     Ok((
+            //         distances.into_pyarray(py).into(),
+            //         indices.into_pyarray(py).into(),
+            //     ))
+            // }
+
+            if let Some(axis) = axis {
+                let k = k.unwrap_or(1);
+                let (axis, nonaxis) = slf.0.query_k_axis(query.as_array(), k, axis)?;
+                let distances =
+                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), axis) };
+                let indices =
+                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), nonaxis) };
                 Ok((
-                    distances.to_pyarray(slf.py()).into(),
-                    indices.to_pyarray(slf.py()).into(),
+                    distances.into_pyarray(slf.py()).into(),
+                    indices.into_pyarray(slf.py()).into(),
                 ))
             } else {
-                let k = k.unwrap();
-                let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
-                // SAFETY: the shape has been checked aldready
-                let distances =
-                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), distances) };
-                let indices =
-                    unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), indices) };
-                Ok((
-                    distances.to_pyarray(slf.py()).into(),
-                    indices.to_pyarray(slf.py()).into(),
-                ))
+                if k == Some(1) || k.is_none() {
+                    let (distances, indices) = slf.0.query(query.as_array())?;
+                    let distances = Array1::from_vec(distances);
+                    let indices = Array1::from_vec(indices);
+                    Ok((
+                        distances.into_pyarray(slf.py()).into(),
+                        indices.into_pyarray(slf.py()).into(),
+                    ))
+                } else {
+                    let k = k.unwrap();
+                    let (distances, indices) = slf.0.query_k(query.as_array(), k)?;
+                    // SAFETY: the shape has been checked aldready
+                    let distances = unsafe {
+                        Array2::from_shape_vec_unchecked((query.shape()[0], k), distances)
+                    };
+                    let indices =
+                        unsafe { Array2::from_shape_vec_unchecked((query.shape()[0], k), indices) };
+                    Ok((
+                        distances.into_pyarray(slf.py()).into(),
+                        indices.into_pyarray(slf.py()).into(),
+                    ))
+                }
             }
         }
     }
@@ -394,6 +458,12 @@ struct Tree3<'a, T: Float> {
 trait FNTree<T: Float> {
     fn query(&self, query: ArrayView2<T>) -> PyResult<(Vec<T>, Vec<u64>)>;
     fn query_k(&self, query: ArrayView2<T>, k: usize) -> PyResult<(Vec<T>, Vec<u64>)>;
+    fn query_k_axis(
+        &self,
+        query: ArrayView2<T>,
+        k: usize,
+        axis: usize,
+    ) -> PyResult<(Vec<T>, Vec<T>)>;
 }
 
 macro_rules! tree_impl {
@@ -467,67 +537,36 @@ macro_rules! tree_impl {
                     // Ok((distances, indices))
                     }
 
-                    // current second best
+                    // current best
                     {
                         let mut distances = Vec::with_capacity(query.len() * k);
                         let mut indices = Vec::with_capacity(query.len() * k);
                         let dist_ptr_usize = distances.as_mut_ptr() as usize;
                         let idx_ptr_usize = indices.as_mut_ptr() as usize;
                         let kdtree = self.borrow_tree();
-                        query.into_par_iter().enumerate().for_each_with(
+                        query.into_par_iter().enumerate().try_for_each_with(
                             (dist_ptr_usize, idx_ptr_usize),
-                            |(d, i), (j, q)| {
+                            |(d, i), (j, q)| -> FnntwResult<(), $float> {
                                 let result = kdtree
-                                    .query_nearest_k(q, k)
-                                    .expect("error occurred during query");
+                                    .query_nearest_k(q, k)?;
+
                                 unsafe {
                                     let d = *d as *mut $float;
                                     let i = *i as *mut u64;
-                                    for kk in 0..k {
-                                        *d.add(k * j + kk) = *result.0.get_unchecked(kk);
-                                        *i.add(k * j + kk) = *result.1.get_unchecked(kk);
-                                    }
+                                    d.add(k * j).copy_from_nonoverlapping(result.0.as_ptr(), k);
+                                    i.add(k * j).copy_from_nonoverlapping(result.1.as_ptr(), k);
                                 }
+                                Ok(())
                             },
-                        );
+                        ).map_err(|e| {
+                            PyValueError::new_err(format!("query failed {e}"))
+                        })?;
                         unsafe {
                             distances.set_len(query.len() * k);
                             indices.set_len(query.len() * k);
                         }
                         Ok((distances, indices))
                     }
-
-                    // // current best
-                    // {
-                    //     let mut distances = Vec::with_capacity(query.len() * k);
-                    //     let mut indices = Vec::with_capacity(query.len() * k);
-                    //     let query_ptr_usize = query.as_ptr() as usize;
-                    //     let dist_ptr_usize = distances.as_mut_ptr() as usize;
-                    //     let idx_ptr_usize = indices.as_mut_ptr() as usize;
-                    //     let kdtree = self.borrow_tree();
-                    //     (0..query.len()).into_par_iter().for_each_with(
-                    //         (dist_ptr_usize, idx_ptr_usize, query_ptr_usize),
-                    //         |(d, i, q), j| {
-                    //             unsafe {
-                    //                 let q = (*q as *const [$float; $dim]).add(j);
-                    //                 let result = kdtree
-                    //                     .query_nearest_k(&*q, k)
-                    //                     .expect("error occurred during query");
-                    //                 let d = *d as *mut $float;
-                    //                 let i = *i as *mut u64;
-                    //                 for kk in 0..k {
-                    //                     *d.add(k * j + kk) = *result.0.get_unchecked(kk);
-                    //                     *i.add(k * j + kk) = *result.1.get_unchecked(kk);
-                    //                 }
-                    //             }
-                    //         },
-                    //     );
-                    //     unsafe {
-                    //         distances.set_len(query.len() * k);
-                    //         indices.set_len(query.len() * k);
-                    //     }
-                    //     Ok((distances, indices))
-                    // }
 
                     // {
                     //     let kdtree = self.borrow_tree();
@@ -539,6 +578,35 @@ macro_rules! tree_impl {
                     //     )
                     // }
 
+                }
+
+                fn query_k_axis(
+                    &self,
+                    query: ArrayView2<$float>,
+                    k: usize,
+                    axis: usize
+                ) -> PyResult<(Vec<$float>, Vec<$float>)> {
+
+                    // Check dimensions of data
+                    let dims: [usize; 2] = query
+                        .shape()
+                        .try_into()
+                        .expect("2D array should definitely have 2 dims");
+
+                    // Return error if not 2D
+                    if dims[1] != $dim {
+                        return Err(PyErr::new::<exceptions::PyTypeError, _>("A 3D tree can only be queried with 3D data"))
+                    }
+
+                    // Transform slice of floats into slice of arrays
+                    let query: &[[$float; $dim]] = slice_as_chunks::<$float, $dim>(query
+                        .as_slice()
+                        .unwrap()
+                    );
+
+                    self.borrow_tree().query_nearest_k_parallel_axis(query, k, axis).map_err(|e| {
+                        PyValueError::new_err(format!("query failed {e}"))
+                    })
                 }
             }
         });
