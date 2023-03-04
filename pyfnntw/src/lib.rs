@@ -1,9 +1,6 @@
 use fnntw::Tree as FNNTWTree;
-use fnntw::{
-    point::Float,
-    utils::{FnntwResult, QueryKResult},
-};
-use ndarray::{Array2, ArrayD};
+use fnntw::{point::Float, utils::FnntwResult};
+use ndarray::Array2;
 use numpy::*;
 use ouroboros::*;
 use pyo3::exceptions::PyValueError;
@@ -296,7 +293,6 @@ fn pyfnntw(_py: Python, m: &PyModule) -> PyResult<()> {
             query: PyReadonlyArray2<'_, f64>,
             k: Option<usize>,
             axis: Option<usize>,
-            py: Python<'py>,
         ) -> PyResult<(PyObject, PyObject)> {
             // if k == Some(1) || k.is_none() {
             //     let (distances, indices) = slf.0.query(query.as_array())?;
