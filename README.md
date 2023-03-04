@@ -19,7 +19,7 @@ Because we know the shape of all arrays (i.e. the dimension of the tree) at comp
 
 
 ### 3. Allocators
-We tested many allocators, including the default allocated and `jemalloc`, `tcmalloc`, `snmalloc`, `mimalloc`, `rpmalloc`, and found the best performance with `tcmalloc`. 
+We tested many allocators, including the default allocator, `jemalloc`, `tcmalloc`, `snmalloc`, `mimalloc`, `rpmalloc`, and found the best performance with `tcmalloc`. 
 
 # Benchmark Against Other Codes
 This library is intended to be used by the author to calculate summary statistics in cosmology. As such, the parameters of the benchmark chosen are close to those that would be used in analyzing the output of a cosmological simulation. In such an application, often many subsamples or simulation boxes are used. So, the combined build + query time is important since many different trees may be constructed in an analysis. We use 
