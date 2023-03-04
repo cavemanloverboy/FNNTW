@@ -99,7 +99,7 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
     }
 
     #[allow(unused_mut)] // if sqrt-dist2 is on, mut is not used
-
+    #[allow(unused)]
     pub(super) fn index_with<'i>(
         mut self,
         start: *const [NotNan<T>; D],

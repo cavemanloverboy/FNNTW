@@ -57,8 +57,7 @@ pub fn new_best<'t, 'i, 'o, T: Float, const D: usize>(
     candidate: &'i Point<T, D>,
     current_best_dist_sq: &'o mut T,
     current_best_candidate: &'o mut &'i Point<T, D>,
-) -> bool
-where
+) where
     'i: 'o,
     't: 'i,
 {
@@ -75,9 +74,6 @@ where
         // New best branch
         *current_best_dist_sq = dist_sq;
         *current_best_candidate = candidate;
-        true
-    } else {
-        false
     }
 }
 
@@ -93,8 +89,7 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
 
     // Compare squared dist
-    let new_best = dist_sq <= *container.best_dist2();
-    if new_best {
+    if dist_sq <= *container.best_dist2() {
         container.push((dist_sq, candidate));
     }
 }
@@ -112,8 +107,7 @@ pub(crate) fn new_best_kth_axis<'t, 'i, 'o, T: Float, const D: usize>(
     let (dist2, ax, nonax) = squared_euclidean_axis(query, unsafe { candidate.position() }, axis);
 
     // Compare squared dist
-    let new_best = dist2 <= *container.best_dist2();
-    if new_best {
+    if dist2 <= *container.best_dist2() {
         container.push(((dist2, ax, nonax), candidate));
     }
 }
