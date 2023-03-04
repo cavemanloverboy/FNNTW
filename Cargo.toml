@@ -22,7 +22,7 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["parallel", "no-position", "sqrt-dist2", "no-index"]#, "tcmallocator"]
+default = ["parallel", "no-position", "sqrt-dist2", "no-index", "tcmallocator"]
 timing = []
 parallel = ["rayon"]
 sqrt-dist2 = []
