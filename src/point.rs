@@ -10,25 +10,25 @@ pub struct Point<T: Float, const D: usize> {
 
 impl<T: Float, const D: usize> Point<T, D> {
     /// SAFETY: This is only used for data which has been checked for correct dimensionality
-    /// and which lives for 't
-
-    pub(crate) unsafe fn get_unchecked<'t>(&self, i: usize) -> &'t NotNan<T> {
+    /// and which lives for 't. It is up to the caller to ensure this is not out of bounds.
+    pub unsafe fn get_unchecked<'t>(&self, i: usize) -> &'t NotNan<T> {
         (*self.ptr).get_unchecked(i)
     }
 
     /// SAFETY: This is only used for data which has been checked for correct dimensionality
-    /// and which lives for 't
-
+    /// and which lives for 't. It is up to the caller to ensure dereference is valid.
     pub(crate) unsafe fn position<'t>(&self) -> &[NotNan<T>; D] {
         &*self.ptr
     }
 
     /// SAFETY: This is only used for data which has been checked for correct dimensionality
     /// and which lives for 't. `start` must be the start of the data vector
-
     pub(crate) unsafe fn index<'t>(&self, start: *const [NotNan<T>; D]) -> u64 {
-        // core::intrinsics::ptr_offset_from_unsigned(self.ptr, std::mem::transmute(start)) as u64
         self.ptr.offset_from(start) as u64
+    }
+
+    pub fn new<'d>(ptr: &[NotNan<T>; D]) -> Self {
+        Self { ptr }
     }
 }
 

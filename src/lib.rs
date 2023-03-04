@@ -16,6 +16,7 @@ use num_format::{Locale, ToFormattedString};
 
 mod allocator;
 pub mod distance;
+pub mod moms;
 pub mod point;
 pub mod query;
 pub mod query_k;
@@ -358,22 +359,19 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
             leaf_index
         } else {
             // Calculate index of median
-            let sub_len = subset.len();
-            let median_index = sub_len / 2 - ((sub_len + 1) % 2);
+            // let sub_len = subset.len();
+            // let median_index = sub_len / 2;
 
             #[cfg(feature = "timing")]
             let timer = std::time::Instant::now();
             // Select median in this subset based on split_dim component
-            let (left, median, right) =
-                    // subset.select_nth_unstable_by(median_index, |a, b| unsafe {
-                    //     // safety: made safe by const generic
-                    //     a.get_unchecked(split_dim).cmp(&b.get_unchecked(split_dim))
-                    // }
-                    subset.select_nth_unstable_by_key(median_index, |a| unsafe {
-                        // safety: made safe by const generic
-                        *a.get_unchecked(split_dim)
-                    }
-                );
+            // let (left, median, right) =
+            //         subset.select_nth_unstable_by_key(median_index, |a| unsafe {
+            //             // safety: made safe by const generic
+            //             *a.get_unchecked(split_dim)
+            //         }
+            //     );
+            let (left, median, right) = moms::moms_seq(subset, None, split_dim);
             // safety: made safe by const generic
             let split_val = unsafe { median.get_unchecked(split_dim) };
             #[cfg(feature = "timing")]
@@ -671,17 +669,18 @@ impl<'t, T: Float + Send + Debug, const D: usize> Tree<'t, T, D> {
             leaf_index
         } else {
             // Calculate index of median
-            let sub_len = subset.len();
-            let median_index = sub_len / 2 - ((sub_len + 1) % 2);
+            // let sub_len = subset.len();
+            // let median_index = sub_len / 2;
 
             #[cfg(feature = "timing")]
             let timer = std::time::Instant::now();
             // Select median in this subset based on split_dim component
-            let (left, median, right) =
-                subset.select_nth_unstable_by_key(median_index, |a| unsafe {
-                    // safety: made safe by const generic
-                    *a.get_unchecked(split_dim)
-                });
+            // let (left, median, right) =
+            //     subset.select_nth_unstable_by_key(median_index, |a| unsafe {
+            //         // safety: made safe by const generic
+            //         *a.get_unchecked(split_dim)
+            //     });
+            let (left, median, right) = moms::moms_seq(subset, None, split_dim);
             // safety: made safe by const generic
             let split_val = unsafe { median.get_unchecked(split_dim) };
             #[cfg(feature = "timing")]
