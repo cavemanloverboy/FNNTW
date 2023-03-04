@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::{
     distance::{calc_dist_sq_to_space, new_best_kth_axis},
     point::{Float, Point},
-    utils::{check_point_return, FnntwError, FnntwResult, QueryKResult},
+    utils::{check_point_return, FnntwError, FnntwResult},
     Node, Tree,
 };
 use ordered_float::NotNan;
@@ -126,7 +126,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         self.check_stem_k_axis(query, current_node, container, points_to_check, axis);
 
         // Write to given vector
-        container.index_into(distances_ptr, indices_ptr, query_index, self.start());
+        container.index_into(
+            distances_ptr,
+            indices_ptr,
+            query_index,
+            #[cfg(not(feature = "no-index"))]
+            self.start(),
+        );
         // index into clears!!
     }
 
@@ -253,7 +259,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             );
         }
 
-        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.start());
+        real_image_container.index_into(
+            distances_ptr,
+            indices_ptr,
+            query_index,
+            #[cfg(not(feature = "no-index"))]
+            self.start(),
+        );
     }
 
     /// Upon checking that we are close to some other space during upward traversal of the tree,

@@ -165,32 +165,33 @@ impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
         (result, self)
     }
 
+    // TODO: position
     pub(super) fn index_into<'i>(
         &mut self,
         ax_ptr: usize,
         nonax_ptr: usize,
         #[cfg(not(feature = "no-index"))] indices_ptr: usize,
         query_index: usize,
-        start: *const [NotNan<T>; D],
+        #[cfg(not(feature = "no-index"))] start: *const [NotNan<T>; D],
     ) where
         't: 'i,
     {
         let axptr = ax_ptr as *mut T;
-        let nonaxptr = ax_ptr as *mut T;
+        let nonaxptr = nonax_ptr as *mut T;
         #[cfg(not(feature = "no-index"))]
         let iptr = indices_ptr as *mut u64;
 
         {
             let neighbors: Vec<_> = std::mem::take(&mut self.items).into_sorted_vec();
             let mut idx = 0;
-            for CandidateAxis(((d2, ax, nonax), p)) in &neighbors {
+            for CandidateAxis(((_d2, ax, _nonax), _p)) in &neighbors {
                 unsafe {
                     *axptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*ax);
                 }
                 idx += 1;
             }
             let mut idx = 0;
-            for CandidateAxis(((d2, ax, nonax), p)) in &neighbors {
+            for CandidateAxis(((_d2, _ax, nonax), _p)) in &neighbors {
                 unsafe {
                     *nonaxptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*nonax);
                 }
