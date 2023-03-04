@@ -8,11 +8,11 @@ use num_format::{Locale, ToFormattedString};
 
 type T = f32;
 const D: usize = 3;
-const QUERY: usize = 1_000_000;
+const QUERY: usize = 4_000_000;
 const BOXSIZE: [T; D] = [1.0; D];
 
 fn criterion_benchmark(c: &mut Criterion) {
-    for ndata in [5, 6].map(|p| 10_usize.pow(p)) {
+    for ndata in [100_000, 4_000_000] {
         let data: Vec<[T; D]> = (0..ndata)
             .map(|_| [(); D].map(|_| rand::random()))
             .collect();
@@ -37,7 +37,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let v: Vec<_> = black_box(&query)
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
-                        drop(t.query_nearest(black_box(q)).unwrap())
+                        t.query_nearest(black_box(q)).unwrap()
                     })
                     .collect();
                 drop(v)
