@@ -68,8 +68,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         // First get real image result
         #[cfg(not(feature = "no-position"))]
         let (mut best_dist2, mut best_idx, mut best_nn) = self.query_nearest_nonperiodic(query);
-        #[cfg(feature = "no-position")]
+        #[cfg(not(feature = "no-index"))]
         let (mut best_dist2, mut best_idx) = self.query_nearest_nonperiodic(query);
+        #[cfg(feature = "no-index")]
+        let (mut best_dist2,) = self.query_nearest_nonperiodic(query);
 
         // Find closest dist2 to every side
         let mut closest_side_dist2 = [T::zero(); D];
@@ -156,13 +158,18 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
             #[cfg(not(feature = "no-position"))]
             let (image_best_dist2, image_best_idx, image_nn) = query_result;
-            #[cfg(feature = "no-position")]
+            #[cfg(not(feature = "no-index"))]
             let (image_best_dist2, image_best_idx) = query_result;
+            #[cfg(feature = "no-index")]
+            let image_best_dist2 = query_result;
 
             // INTRINSICS: most images will be further than best_dist2
             if unlikely(image_best_dist2 < best_dist2) {
                 best_dist2 = image_best_dist2;
-                best_idx = image_best_idx;
+                #[cfg(not(feature = "no-index"))]
+                {
+                    best_idx = image_best_idx;
+                }
                 #[cfg(not(feature = "no-position"))]
                 {
                     best_nn = image_nn;
@@ -172,6 +179,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         (
             best_dist2,
+            #[cfg(not(feature = "no-index"))]
             best_idx,
             #[cfg(not(feature = "no-position"))]
             best_nn,
@@ -181,7 +189,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
     /// Upon checking that we are close to some other space during upward traversal of the tree,
     /// this function is called to check candidates in the child space, appending any new candidate spaces
     /// as we go along
-    fn check_child<'i, 'o>(
+    pub(crate) fn check_child<'i, 'o>(
         &'i self,
         query: &[NotNan<T>; D],
         sibling: &usize,
@@ -218,7 +226,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
     }
 
-    fn check_leaf<'a, 'b>(
+    pub(crate) fn check_leaf<'a, 'b>(
         &self,
         query: &'b [NotNan<T>; D],
         // leaf_points: &'t Vec<&'t [NotNan<T>; D]>,
@@ -242,7 +250,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
     /// If sibling is a stem, then we need to recurse back down
 
-    fn check_stem<'i, 'o>(
+    pub(crate) fn check_stem<'i, 'o>(
         &'i self,
         query: &[NotNan<T>; D],
         stem: &'i Node<T, D>,
@@ -256,8 +264,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         // Navigate down the stems until we reach a leaf
         let mut current_node = stem;
 
-        while current_node.is_stem() {
-            let next_leafnode = match current_node {
+        // let mut leaf = false;
+        loop {
+            current_node = match current_node {
                 Node::Stem {
                     split_dim,
                     point,
@@ -280,7 +289,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                         // }
 
                         // Right Branch
-                        right
+                        unsafe { self.nodes.get_unchecked(*right) }
                     } else {
                         // Record sibling node and the dist_sq to its associated space
                         // safety: indices are valid by construction, with the atomic lock on Vec<Node>
@@ -293,15 +302,15 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                         // }
 
                         // Left Branch
-                        left
+                        unsafe { self.nodes.get_unchecked(*left) }
                     }
                 }
-                _ => unreachable!("we are traversing though stems"),
+                _ => break, //unreachable!("we are traversing though stems"),
             };
 
             // Set leafnode
             // safety: indices are valid by construction, with the atomic lock on Vec<Node>
-            current_node = unsafe { self.nodes.get_unchecked(*next_leafnode) };
+            // current_node = unsafe { self.nodes.get_unchecked(*next_leafnode) };
         }
 
         // We are now at a leaf; check it
@@ -327,7 +336,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
     }
 
-    fn check_parent<'i, 'o>(
+    pub(crate) fn check_parent<'i, 'o>(
         &self,
         query: &[NotNan<T>; D],
         stem: &'i Point<T, D>,

@@ -10,7 +10,7 @@ const D: usize = 3;
 const K: usize = 80;
 
 #[test]
-fn test_brute_force_periodic_k_par() -> Result<(), Box<dyn Error>> {
+fn test_brute_force_periodic_k() -> Result<(), Box<dyn Error>> {
     // Random number generator
     let mut rng = rand::thread_rng();
 
@@ -28,19 +28,18 @@ fn test_brute_force_periodic_k_par() -> Result<(), Box<dyn Error>> {
     let tree = Tree::<'_, _, D>::new_parallel(&data, 1, 1)?.with_boxsize(&BOXSIZE)?;
 
     // Query tree
-    let results = tree.query_nearest_k_parallel(&query, K)?;
+    let mut results = Vec::with_capacity(NQUERY);
+    for q in &query {
+        results.push(tree.query_nearest_k_noidx(q, K)?);
+    }
 
     // Brute force check results
     for (i, q) in query.iter().enumerate() {
-        let result = (
-            results.0[i * K..(i + 1) * K].to_vec(),
-            #[cfg(not(feature = "no-index"))]
-            results.1[i * K..(i + 1) * K].to_vec(),
-            #[cfg(not(feature = "no-position"))]
-            results.2[i * K..(i + 1) * K].to_vec(),
-        );
+        let result = &results[i];
         let expected = brute_force_periodic_k(q, &data, K);
-        assert_eq!(result, expected);
+        assert_eq!(result.len(), K);
+        assert_eq!(expected.0.len(), K);
+        assert_eq!(results[i], expected.0);
     }
 
     Ok(())
@@ -97,49 +96,32 @@ fn brute_force_periodic_k<'d, T: Float, const D: usize>(
 
             let dist = squared_euclidean(&image_to_check, d);
 
-            #[cfg(not(feature = "no-index"))]
             all.push((
                 dist,
                 i,
                 #[cfg(not(feature = "no-position"))]
                 d,
-            ));
-            #[cfg(feature = "no-index")]
-            all.push(dist);
+            ))
         }
     }
 
-    #[cfg(not(feature = "no-index"))]
+    all.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    #[cfg(feature = "sqrt-dist2")]
+    all.iter_mut().for_each(|p| {
+        p.0 = p.0.sqrt();
+    });
+    all.truncate(k);
+
+    #[cfg(feature = "no-position")]
+    return all.into_iter().unzip();
+
+    #[cfg(not(feature = "no-position"))]
     {
-        all.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        #[cfg(feature = "sqrt-dist2")]
-        all.iter_mut().for_each(|p| {
-            p.0 = p.0.sqrt();
-        });
-        all.truncate(k);
-
-        #[cfg(feature = "no-position")]
-        return all.into_iter().unzip();
-
-        #[cfg(not(feature = "no-position"))]
-        {
-            let mut result = (vec![], vec![], vec![]);
-            for a in all {
-                result.0.push(a[0]);
-                result.1.push(a[1]);
-                result.2.push(a[2]);
-            }
+        let mut result = (vec![], vec![], vec![]);
+        for a in all {
+            result.0.push(a[0]);
+            result.1.push(a[1]);
+            result.2.push(a[2]);
         }
-    }
-    #[cfg(feature = "no-index")]
-    {
-        all.sort_by(|p1, p2| p1.partial_cmp(&p2).unwrap());
-        #[cfg(feature = "sqrt-dist2")]
-        all.iter_mut().for_each(|p| {
-            *p = p.sqrt();
-        });
-        all.truncate(k);
-
-        return (all,);
     }
 }

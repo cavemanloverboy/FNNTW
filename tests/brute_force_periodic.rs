@@ -113,5 +113,8 @@ fn brute_force_periodic<'d, const D: usize>(
         best.0 = best.0.sqrt();
     }
 
-    best
+    #[cfg(not(feature = "no-index"))]
+    return best;
+    #[cfg(feature = "no-index")]
+    return (best.0,);
 }

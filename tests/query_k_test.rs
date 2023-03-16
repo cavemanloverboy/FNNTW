@@ -18,7 +18,7 @@ fn test_query_nearest_k_parallel() {
         .map(|_| [(); D].map(|_| rand::random()))
         .collect();
 
-    let mut tree = Tree::new(&data, 32).unwrap();
+    let tree = Tree::new(&data, 32).unwrap();
     println!("constructed tree");
 
     // non pbc check

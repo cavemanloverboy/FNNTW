@@ -1,0 +1,57 @@
+d=4,000,000, q=4,000,000, ls=32, runs=100
+
+scipy results
+scipy: avg_build=2234.602 ms
+scipy k=1: avg_query=618.687 ms
+scipy k=10: avg_query=1426.433 ms
+
+
+pykdtree results
+pykdtree: avg_build=735.383 ms
+pykdtree k=1: avg_query=484.096 ms
+pykdtree k=10: avg_query=1255.048 ms
+
+
+fnntw results
+Parallelism activated: 48 threads
+fnntw: avg_build=452.777 ms
+fnntw k=1: avg_query=600.955 ms
+fnntw k=10: avg_query=1433.123 ms
+
+build & nonpbc winners:
+build winner: fnntw @ 452.777 ms
+K=1 query winner: pykdtree: @ 484.096 ms
+K=10 query winner: pykdtree: @ 1255.048 ms
+
+periodic results
+
+scipy results
+scipy k=1: avg_query=682.730 ms
+scipy k=10: avg_query=1617.556 ms
+
+
+fnntw results
+fnntw k=1: avg_query=607.984 ms
+fnntw k=10: avg_query=1467.434 ms
+
+pbc winners:
+K=1 query winner: fnntw @ 607.984 ms
+K=10 query winner: fnntw @ 1467.434 ms
+
+scipy single precision results
+scipy k=1: avg_query=630.672 ms
+scipy k=10: avg_query=1451.051 ms
+
+
+pykdtree single precision results
+pykdtree k=1: avg_query=425.517 ms
+pykdtree k=10: avg_query=1056.983 ms
+
+
+fnntw single precision results
+fnntw k=1: avg_query=497.143 ms
+fnntw k=10: avg_query=1243.363 ms
+
+single precision winners:
+K=1 query winner: pykdtree  @ 425.517 ms
+K=10 query winner: pykdtree  @ 1056.983 ms

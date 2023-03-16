@@ -10,6 +10,8 @@ use ordered_float::NotNan;
 
 pub mod container;
 pub mod container_axis;
+pub mod container_noidx;
+pub mod noidx;
 pub mod parallel;
 pub mod parallel_axis;
 pub mod parallel_with;

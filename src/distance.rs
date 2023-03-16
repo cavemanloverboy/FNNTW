@@ -4,7 +4,9 @@ use ordered_float::NotNan;
 
 use crate::{
     point::{Float, Point},
-    query_k::{container::Container, container_axis::ContainerAxis},
+    query_k::{
+        container::Container, container_axis::ContainerAxis, container_noidx::ContainerNoIndex,
+    },
 };
 
 pub fn squared_euclidean<T: Float, const D: usize>(a: &[NotNan<T>; D], b: &[NotNan<T>; D]) -> T
@@ -91,6 +93,23 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     // Compare squared dist
     if dist_sq <= *container.best_dist2() {
         container.push((dist_sq, candidate));
+    }
+}
+
+pub(crate) fn new_best_kth_noidx<'t, 'i, 'o, T: Float, const D: usize>(
+    query: &[NotNan<T>; D],
+    candidate: &'i Point<T, D>,
+    container: &'o mut ContainerNoIndex<T, D>,
+) where
+    'i: 'o,
+    't: 'i,
+{
+    // Run usual squared_euclidean fn
+    let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
+
+    // Compare squared dist
+    if dist_sq <= *container.best_dist2() {
+        container.push(dist_sq);
     }
 }
 

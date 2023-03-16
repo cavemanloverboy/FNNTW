@@ -22,8 +22,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let alloc_timer = std::time::Instant::now();
 
         let mut distances = Vec::with_capacity(queries.len() * k);
+        #[cfg(not(feature = "no-index"))]
         let mut indices = Vec::with_capacity(queries.len() * k);
         let dist_ptr_usize = distances.as_mut_ptr() as usize;
+        #[cfg(not(feature = "no-index"))]
         let idx_ptr_usize = indices.as_mut_ptr() as usize;
 
         #[cfg(feature = "timing")]
@@ -51,6 +53,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                         &mut container,
                         &mut point_vec,
                         dist_ptr_usize,
+                        #[cfg(not(feature = "no-index"))]
                         idx_ptr_usize,
                         query_index,
                     );
@@ -75,6 +78,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
                         &mut container,
                         &mut point_vec,
                         dist_ptr_usize,
+                        #[cfg(not(feature = "no-index"))]
                         idx_ptr_usize,
                         query_index,
                     );
@@ -86,10 +90,15 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         unsafe {
             distances.set_len(queries.len() * k);
+            #[cfg(not(feature = "no-index"))]
             indices.set_len(queries.len() * k);
         }
 
-        Ok((distances, indices))
+        Ok((
+            distances,
+            #[cfg(not(feature = "no-index"))]
+            indices,
+        ))
     }
 
     fn query_nearest_k_nonperiodic_into<'q>(
@@ -99,7 +108,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         container: &mut Container<'q, T, D>,
         points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
         distances_ptr: usize,
-        indices_ptr: usize,
+        #[cfg(not(feature = "no-index"))] indices_ptr: usize,
         query_index: usize,
     ) where
         't: 'q,
@@ -112,7 +121,13 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         self.check_stem_k(query, current_node, container, points_to_check);
 
         // Write to given vector
-        container.index_into(distances_ptr, indices_ptr, query_index, self.start());
+        container.index_into(
+            distances_ptr,
+            #[cfg(not(feature = "no-index"))]
+            indices_ptr,
+            query_index,
+            self.start(),
+        );
         // index into clears!!
     }
 
@@ -124,7 +139,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         container: &mut Container<'q, T, D>,
         points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
         distances_ptr: usize,
-        indices_ptr: usize,
+        #[cfg(not(feature = "no-index"))] indices_ptr: usize,
         query_index: usize,
     ) where
         't: 'q,
@@ -227,6 +242,12 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             );
         }
 
-        real_image_container.index_into(distances_ptr, indices_ptr, query_index, self.start());
+        real_image_container.index_into(
+            distances_ptr,
+            #[cfg(not(feature = "no-index"))]
+            indices_ptr,
+            query_index,
+            self.start(),
+        );
     }
 }

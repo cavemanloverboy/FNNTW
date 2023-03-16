@@ -8,8 +8,8 @@ RAND_QUERY = [
     (10**6, 10**5),
     (4*10**6, 4*10**6),
 ]
-RUNS = 1
-WARMUP = 0
+RUNS = 100
+WARMUP = 10
 LS = 32
 K = 10
 

@@ -20,6 +20,7 @@ pub mod moms;
 pub mod point;
 pub mod query;
 pub mod query_k;
+pub mod query_noidx;
 pub mod utils;
 
 use utils::*;

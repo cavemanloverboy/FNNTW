@@ -163,22 +163,12 @@ impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
     //     (result, self)
     // }
 
-    // TODO: position
-    pub(super) fn index_into<'i>(
-        &mut self,
-        ax_ptr: usize,
-        nonax_ptr: usize,
-        #[cfg(not(feature = "no-index"))] indices_ptr: usize,
-        query_index: usize,
-        #[cfg(not(feature = "no-index"))] start: *const [NotNan<T>; D],
-    ) where
+    pub(super) fn no_index<'i>(&mut self, ax_ptr: usize, nonax_ptr: usize, query_index: usize)
+    where
         't: 'i,
     {
         let axptr = ax_ptr as *mut T;
         let nonaxptr = nonax_ptr as *mut T;
-        #[cfg(not(feature = "no-index"))]
-        let iptr = indices_ptr as *mut u64;
-
         {
             let neighbors: Vec<_> = std::mem::take(&mut self.items).into_sorted_vec();
             let mut idx = 0;
@@ -194,26 +184,6 @@ impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
                     *nonaxptr.add(query_index * self.k_or_datalen + idx) = process_dist2(*nonax);
                 }
                 idx += 1;
-            }
-            #[cfg(not(feature = "no-index"))]
-            {
-                let mut idx = 0;
-                for CandidateAxis((_, neighbor)) in &neighbors {
-                    unsafe {
-                        *iptr.add(query_index * self.k_or_datalen + idx) = neighbor.index(start);
-                    }
-                    idx += 1;
-                }
-            }
-            #[cfg(not(feature = "no-position"))]
-            {
-                let mut idx = 0;
-                for CandidateAxis((_, neighbor)) in &neighbors {
-                    unsafe {
-                        *ptrs.2.add(idx) = neighbor.position;
-                    }
-                    idx += 1;
-                }
             }
         }
     }

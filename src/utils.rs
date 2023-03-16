@@ -6,24 +6,16 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 
 pub type FnntwResult<R, T> = Result<R, FnntwError<T>>;
-// #[cfg(feature = "no-index")]
-// pub type QueryResult<'t, T, const D: usize> = T;
-#[cfg(feature = "no-position")]
 pub type QueryResult<'t, T, const D: usize> = (T, u64);
 #[cfg(not(feature = "no-position"))]
 pub type QueryResult<'t, T, const D: usize> = (T, u64, &'t [NotNan<T>; D]);
 
-#[cfg(feature = "no-position")]
+#[cfg(not(feature = "no-index"))]
 pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>);
 #[cfg(not(feature = "no-position"))]
 pub type QueryKResult<'t, T, const D: usize> = (Vec<T>, Vec<u64>, Vec<[NotNan<T>; D]>);
 
-#[cfg(feature = "no-index")]
 pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>);
-#[cfg(all(feature = "no-position", not(feature = "no-index")))]
-pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>, Vec<u64>);
-#[cfg(not(feature = "no-position"))]
-pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>, Vec<u64>, Vec<[NotNan<T>; D]>);
 
 pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
     data: &'d [[T; D]],

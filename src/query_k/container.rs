@@ -98,6 +98,29 @@ impl<'t, T: Float, const D: usize> Container<'t, T, D> {
         result
     }
 
+    pub(super) fn no_index<'i>(&mut self) -> Vec<T>
+    where
+        't: 'i,
+    {
+        // Preallocate
+        let mut result: Vec<T> = Vec::with_capacity(self.k_or_datalen);
+        let ptr = result.as_mut_ptr();
+
+        // let mut idx = self.items.len();
+        // while let Some(Candidate((dist2, neighbor))) = self.items.pop() {
+        let mut idx = 0;
+        for Candidate((dist2, _)) in std::mem::take(&mut self.items).into_sorted_vec() {
+            unsafe {
+                *ptr.add(idx) = process_dist2(dist2);
+            }
+            idx += 1;
+        }
+        unsafe {
+            result.set_len(self.k_or_datalen);
+        }
+        result
+    }
+
     #[allow(unused_mut)] // if sqrt-dist2 is on, mut is not used
     #[allow(unused)]
     pub(super) fn index_with<'i>(

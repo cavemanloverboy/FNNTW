@@ -22,17 +22,17 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["parallel", "no-position", "sqrt-dist2", "no-index", "tcmallocator"]
+default = ["parallel", "no-position", "sqrt-dist2", "tcmallocator"]
 timing = []
 parallel = ["rayon"]
 sqrt-dist2 = []
 no-position = []
 no-index = ["no-position"]
-jemalloc = ["jemallocator"]
-tcmallocator = ["tcmalloc/bundled"]
-snmallocator = ["snmalloc-rs"]
-mimallocator = ["mimalloc"]
-rpmallocator = ["rpmalloc"]
+#jemalloc = ["jemallocator"]
+tcmallocator = ["tcmalloc/bundled"] # this is the best one
+# snmallocator = ["snmalloc-rs"]
+# mimallocator = ["mimalloc"]
+# rpmallocator = ["rpmalloc"]
 
 [dependencies]
 ordered-float = "3.0.0"

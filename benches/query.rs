@@ -27,7 +27,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         ));
         group
             .confidence_level(0.99)
-            .sample_size(500)
+            .sample_size(100)
             .warm_up_time(Duration::from_secs(5))
             .measurement_time(Duration::from_secs(20));
 
@@ -43,6 +43,17 @@ fn criterion_benchmark(c: &mut Criterion) {
                 drop(v)
             })
         });
+        group.bench_function("non-periodic no idx", |b| {
+            b.iter(|| {
+                let v: Vec<_> = black_box(&query)
+                    .par_iter()
+                    .map_with(black_box(&tree), |t, q| {
+                        t.query_nearest_noidx(black_box(q)).unwrap()
+                    })
+                    .collect();
+                drop(v)
+            })
+        });
 
         let tree = tree.with_boxsize(&BOXSIZE).unwrap();
         group.bench_function("periodic", |b| {
@@ -51,6 +62,17 @@ fn criterion_benchmark(c: &mut Criterion) {
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
                         drop(t.query_nearest(black_box(q)).unwrap())
+                    })
+                    .collect();
+                drop(v)
+            })
+        });
+        group.bench_function("periodic no idx", |b| {
+            b.iter(|| {
+                let v: Vec<_> = black_box(&query)
+                    .par_iter()
+                    .map_with(black_box(&tree), |t, q| {
+                        drop(t.query_nearest_noidx(black_box(q)).unwrap())
                     })
                     .collect();
                 drop(v)

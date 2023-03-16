@@ -1,4 +1,4 @@
-use fnntw::{point::Point, query_k::container::Container, Tree};
+use fnntw::Tree;
 use rayon::prelude::*;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -41,6 +41,17 @@ fn criterion_benchmark(c: &mut Criterion) {
                     .par_iter()
                     .map_with(black_box(&tree), |t, q| {
                         black_box(t.query_nearest_k(black_box(q), black_box(k))).unwrap();
+                    })
+                    .collect();
+                v
+            })
+        });
+        group.bench_function(format!("k={k} nonpbc noidx"), |b| {
+            b.iter(|| {
+                let v: Vec<_> = black_box(&query)
+                    .par_iter()
+                    .map_with(black_box(&tree), |t, q| {
+                        black_box(t.query_nearest_k_noidx(black_box(q), black_box(k))).unwrap();
                     })
                     .collect();
                 v

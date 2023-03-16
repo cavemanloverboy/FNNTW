@@ -9,7 +9,7 @@ const D: usize = 3;
 const K: usize = 80;
 
 #[test]
-fn test_brute_force_k() -> Result<(), Box<dyn Error>> {
+fn test_brute_force_k_noidx() -> Result<(), Box<dyn Error>> {
     // Random number generator
     let mut rng = rand::thread_rng();
 
@@ -29,18 +29,16 @@ fn test_brute_force_k() -> Result<(), Box<dyn Error>> {
     // Query tree
     let mut results = Vec::with_capacity(NQUERY);
     for q in &query {
-        results.push(tree.query_nearest_k(q, K)?);
+        results.push(tree.query_nearest_k_noidx(q, K)?);
     }
 
     // Brute force check results
     for (i, q) in query.iter().enumerate() {
         let result = &results[i];
         let expected = brute_force_k(q, &data, K);
-        assert_eq!(result.0.len(), K);
+        assert_eq!(result.len(), K);
         assert_eq!(expected.0.len(), K);
-        assert_eq!(*result, expected);
-        assert_eq!(*result, expected);
-        assert_eq!(*result, expected);
+        assert_eq!(*result, expected.0);
     }
 
     Ok(())

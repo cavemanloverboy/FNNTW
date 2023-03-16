@@ -5,8 +5,8 @@ from pykdtree.kdtree import KDTree as pykdTree
 from scipy.spatial import cKDTree as scipyTree
 
 
-NRAND = 4*10**6
-NQUERY = 4*10**6
+NRAND = 10**5
+NQUERY = 10**6
 WARMUP = 20
 RUNS = 100
 LS = 32
