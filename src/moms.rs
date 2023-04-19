@@ -3,6 +3,7 @@ use std::{
     time::Instant,
 };
 
+#[cfg(feature = "parallel")]
 use rayon::{
     prelude::{IntoParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -10,14 +11,18 @@ use rayon::{
 
 use crate::point::{Float, Point};
 
-pub fn moms<T: Float, const D: usize>(
+#[allow(unused)] // in case we switch to this in the future
+fn moms<T: Float, const D: usize>(
     slice: &mut [[T; D]],
     chunk_size: usize,
     axis: usize,
 ) -> (&mut [[T; D]], &mut [T; D], &mut [[T; D]]) {
     let medians_timer = Instant::now();
-    let mut medians: Vec<&mut [T; D]> = slice
-        .par_chunks_mut(chunk_size)
+    #[cfg(feature = "parallel")]
+    let chunks = slice.par_chunks_mut(chunk_size);
+    #[cfg(not(feature = "parallel"))]
+    let chunks = slice.chunks_mut(chunk_size);
+    let mut medians: Vec<&mut [T; D]> = chunks
         .flat_map(|chunk| {
             if chunk.len() == 0 {
                 return None;
@@ -60,7 +65,11 @@ pub fn moms<T: Float, const D: usize>(
     let equal = AtomicUsize::new(0);
     use likely_stable::unlikely;
     use std::sync::atomic::Ordering;
-    slice.into_par_iter().for_each(|s| unsafe {
+    #[cfg(feature = "parallel")]
+    let slice_iter = slice.into_par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let slice_iter = slice.into_iter();
+    slice_iter.for_each(|s| unsafe {
         if unlikely(s.get_unchecked(axis) == approx_median.get_unchecked(axis)) {
             equal.fetch_add(1, Ordering::Relaxed);
         } else if s.get_unchecked(axis) < approx_median.get_unchecked(axis) {
@@ -72,15 +81,9 @@ pub fn moms<T: Float, const D: usize>(
         counter_timer.elapsed().as_micros()
     );
 
-    // let (tx, rx) = crossbeam_channel::bounded(100);
-    // let rearrange = std::thread::
-
     let num_left = left.load(Ordering::Acquire);
     let num_eq = equal.load(Ordering::Acquire);
     let num_right = AtomicUsize::new(slice.len() - num_left - num_eq);
-    // let left_ptr = slice.as_mut_ptr();
-    // let eq_ptr = unsafe { slice.as_mut_ptr().add(num_left) };
-    // let right_ptr = unsafe { slice.as_mut_ptr().add(num_left + num_eq) };
 
     let left_atomptr = AtomicPtr::new(slice.as_mut_ptr());
     let eq_atomptr =
@@ -90,17 +93,13 @@ pub fn moms<T: Float, const D: usize>(
             .as_mut_ptr()
             .add(left.load(Ordering::Acquire) + equal.load(Ordering::Acquire))
     });
-    // for i in 0..num_left {
-    //     unsafe {
-    //         if unlikely(slice.get_unchecked(i).get_unchecked(axis) == approx_median.get_unchecked(axis)) {
-    //             left_ptr.swap(with)
-    //         } else if {
-    //             s.
-    //         }
-    //     }
-    // }
+
     let left_timer = Instant::now();
-    (0..num_left).into_par_iter().for_each(|_| unsafe {
+    #[cfg(feature = "parallel")]
+    let left_iter = (0..num_left).into_par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let left_iter = (0..num_left).into_iter();
+    left_iter.for_each(|_| unsafe {
         let left_check_idx = left_atomptr
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| Some(ptr.add(1)))
             .unwrap();
@@ -129,25 +128,26 @@ pub fn moms<T: Float, const D: usize>(
 
     #[cfg(feature = "timing")]
     let right_timer = Instant::now();
-    (0..num_right.load(Ordering::Relaxed))
-        .into_par_iter()
-        .for_each(|_| unsafe {
-            let right_check_idx = right_atomptr
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| Some(ptr.add(1)))
-                .unwrap();
-            loop {
-                if unlikely(
-                    (*right_check_idx).get_unchecked(axis) == approx_median.get_unchecked(axis),
-                ) {
-                    let eq_idx = eq_atomptr
-                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| Some(ptr.add(1)))
-                        .unwrap();
-                    right_check_idx.swap(eq_idx);
-                } else {
-                    break;
-                }
+    #[cfg(feature = "parallel")]
+    let right_iter = (0..num_right.load(Ordering::Relaxed)).into_par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let right_iter = (0..num_right.load(Ordering::Relaxed)).into_iter();
+    right_iter.for_each(|_| unsafe {
+        let right_check_idx = right_atomptr
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| Some(ptr.add(1)))
+            .unwrap();
+        loop {
+            if unlikely((*right_check_idx).get_unchecked(axis) == approx_median.get_unchecked(axis))
+            {
+                let eq_idx = eq_atomptr
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| Some(ptr.add(1)))
+                    .unwrap();
+                right_check_idx.swap(eq_idx);
+            } else {
+                break;
             }
-        });
+        }
+    });
     println!(
         "right arrange took {} micros",
         left_timer.elapsed().as_micros()
@@ -174,13 +174,18 @@ pub fn moms_seq<T: Float, const D: usize>(
     }
     #[cfg(feature = "timing")]
     let medians_timer = Instant::now();
-    let chunk_size = chunk_size.unwrap_or(
-        (slice.len() / (rayon::current_num_threads() * 4))
-            .max(5)
-            .min(250_000),
-    );
-    let mut medians: Vec<&mut Point<T, D>> = slice
-        .par_chunks_mut(chunk_size)
+
+    #[cfg(feature = "parallel")]
+    let num_threads = rayon::current_num_threads();
+    #[cfg(not(feature = "parallel"))]
+    let num_threads = 1;
+
+    let chunk_size = chunk_size.unwrap_or((slice.len() / (num_threads * 4)).max(5).min(250_000));
+    #[cfg(feature = "parallel")]
+    let chunks = slice.par_chunks_mut(chunk_size);
+    #[cfg(not(feature = "parallel"))]
+    let chunks = slice.chunks_mut(chunk_size);
+    let mut medians: Vec<&mut Point<T, D>> = chunks
         .map(|chunk| {
             let chunk_median_index = chunk.len() / 2;
             let (_, chunk_median, _) =
@@ -245,15 +250,6 @@ pub fn moms_seq<T: Float, const D: usize>(
     let mut eq_ptr = unsafe { slice.as_mut_ptr().add(left) };
     let mut right_ptr = unsafe { slice.as_mut_ptr().add(left + equal) };
 
-    // for i in 0..num_left {
-    //     unsafe {
-    //         if unlikely(slice.get_unchecked(i).get_unchecked(axis) == approx_median.get_unchecked(axis)) {
-    //             left_ptr.swap(with)
-    //         } else if {
-    //             s.
-    //         }
-    //     }
-    // }
     #[cfg(feature = "timing")]
     let left_timer = Instant::now();
     for _ in 0..left {

@@ -2,7 +2,7 @@
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-#[cfg(feature = "tcmalloc")]
+#[cfg(all(feature = "tcmalloc", not(target_os = "darwin")))]
 #[global_allocator]
 static ALLOC: tcmalloc::TCMalloc = tcmalloc::TCMalloc;
 

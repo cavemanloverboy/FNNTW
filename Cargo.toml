@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 description = "FNNTW: Fastest Nearest Neighbor (in the) West. A fast kdtree/kNN library."
 authors = ["Cavey Cool <caveycool@gmail.com>"]
 repository = "https://github.com/cavemanloverboy/fnntw"
@@ -22,17 +22,17 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["parallel", "no-position", "sqrt-dist2", "no-index", "tcmallocator"]
-timing = []
-parallel = ["rayon"]
-sqrt-dist2 = []
-no-position = []
-no-index = ["no-position"]
-jemalloc = ["jemallocator"]
-tcmallocator = ["tcmalloc/bundled"]
-snmallocator = ["snmalloc-rs"]
-mimallocator = ["mimalloc"]
-rpmallocator = ["rpmalloc"]
+default = ["parallel", "no-position", "sqrt-dist2", "no-index"]
+timing = []                         # Dev feature
+parallel = ["rayon"]                # Enables parallel query methods and parallel median of medians
+sqrt-dist2 = []                     # Apply square root to squared euclidean distance, returning the euclidean distance
+no-position = []                    # Omits neighbor position
+no-index = ["no-position"]          # Omits index and only returns distances. Also does not return position.
+tcmallocator = ["tcmalloc/bundled"] # This was found to be the best performing allocator but is not supported on all systems
+# jemalloc = ["jemallocator"]
+# snmallocator = ["snmalloc-rs"]
+# mimallocator = ["mimalloc"]
+# rpmallocator = ["rpmalloc"]
 
 [dependencies]
 ordered-float = "3.0.0"

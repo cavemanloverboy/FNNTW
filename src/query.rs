@@ -10,18 +10,18 @@ use likely_stable::unlikely;
 use ordered_float::NotNan;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    pub fn query_nearest<'q>(&'q self, query: &[T; D]) -> FnntwResult<QueryResult<'t, T, D>, T> {
+    pub fn query_nearest<'q>(&'q self, query: &[T; D]) -> FnntwResult<QueryResult<'q, T, D>, T> {
         // Check for valid query point
         let query: &[NotNan<T>; D] = check_point_return(query)?;
 
         if let Some(ref boxsize) = self.boxsize {
             // Periodic query
-            Ok(process_result::<'t, T, D>(
+            Ok(process_result::<T, D>(
                 self.query_nearest_periodic(query, boxsize),
             ))
         } else {
             // Non periodic query
-            Ok(process_result::<'t, T, D>(
+            Ok(process_result::<T, D>(
                 self.query_nearest_nonperiodic(query),
             ))
         }
@@ -29,8 +29,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
     /// Given a query point `query`, query the tree and return point's nearest neighbor.
     /// The value returned is (`distance_to_neighbor: T`, `neighbor_index: u64`, `neighbor_position: &'t [NotNan<T>; D]`).
-
-    fn query_nearest_nonperiodic<'q>(&'q self, query: &[NotNan<T>; D]) -> QueryResult<'t, T, D> {
+    fn query_nearest_nonperiodic<'q>(&'q self, query: &[NotNan<T>; D]) -> QueryResult<'q, T, D> {
         // Get reference to the root node
         let current_node: &Node<T, D> = &self.root_node;
 
@@ -54,9 +53,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         (
             current_best_dist_sq,
-            unsafe { current_best_neighbor.index(self.start()) },
+            current_best_neighbor.index(self.start()),
             #[cfg(not(feature = "no-position"))]
-            current_best_neighbor.position,
+            current_best_neighbor.position(),
         )
     }
 
@@ -64,7 +63,7 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         &'q self,
         query: &[NotNan<T>; D],
         boxsize: &[NotNan<T>; D],
-    ) -> QueryResult<'t, T, D> {
+    ) -> QueryResult<'q, T, D> {
         // First get real image result
         #[cfg(not(feature = "no-position"))]
         let (mut best_dist2, mut best_idx, mut best_nn) = self.query_nearest_nonperiodic(query);

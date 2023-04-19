@@ -1,3 +1,5 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
+
 use fnntw::{distance::squared_euclidean, point::Float, utils::QueryKResult, Tree};
 use ordered_float::NotNan;
 use rand::{rngs::ThreadRng, Rng};
@@ -119,9 +121,11 @@ fn brute_force_periodic_k<'d, T: Float, const D: usize>(
     {
         let mut result = (vec![], vec![], vec![]);
         for a in all {
-            result.0.push(a[0]);
-            result.1.push(a[1]);
-            result.2.push(a[2]);
+            result.0.push(a.0);
+            result.1.push(a.1);
+            #[cfg(not(feature = "no-position"))]
+            result.2.push(*a.2);
         }
+        result
     }
 }

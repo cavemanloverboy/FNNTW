@@ -1,3 +1,5 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
+
 use std::fmt::Debug;
 
 use crate::{
@@ -12,7 +14,6 @@ use super::container_axis::ContainerAxis;
 
 use crate::utils::QueryKAxisResult;
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    #[cfg(all(feature = "parallel", feature = "no-position"))]
     pub fn query_nearest_k_parallel_axis<'q>(
         &'q self,
         queries: &'q [[T; D]],
@@ -99,7 +100,12 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
             indices.set_len(queries.len() * k);
         }
 
-        Ok((axes, nonaxes))
+        Ok((
+            axes,
+            nonaxes,
+            #[cfg(not(feature = "no-index"))]
+            indices,
+        ))
     }
 
     fn query_nearest_k_nonperiodic_into_axis<'q>(
@@ -108,8 +114,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         _k: usize,
         container: &mut ContainerAxis<'q, T, D>,
         points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
-        distances_ptr: usize,
-        indices_ptr: usize,
+        ax_ptr_usize: usize,
+        nonax_ptr_usize: usize,
+        #[cfg(not(feature = "no-index"))] idx_ptr_usize: usize,
         query_index: usize,
         axis: usize,
     ) where
@@ -127,8 +134,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         // Write to given vector
         container.index_into(
-            distances_ptr,
-            indices_ptr,
+            ax_ptr_usize,
+            nonax_ptr_usize,
+            #[cfg(not(feature = "no-index"))]
+            idx_ptr_usize,
             query_index,
             #[cfg(not(feature = "no-index"))]
             self.start(),
@@ -143,8 +152,9 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         boxsize: &[NotNan<T>; D],
         container: &mut ContainerAxis<'q, T, D>,
         points_to_check: &mut Vec<(&'q usize, &'q Point<T, D>, T)>,
-        distances_ptr: usize,
-        indices_ptr: usize,
+        ax_ptr_usize: usize,
+        nonax_ptr_usize: usize,
+        #[cfg(not(feature = "no-index"))] idx_ptr_usize: usize,
         query_index: usize,
         axis: usize,
     ) where
@@ -260,8 +270,10 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         }
 
         real_image_container.index_into(
-            distances_ptr,
-            indices_ptr,
+            ax_ptr_usize,
+            nonax_ptr_usize,
+            #[cfg(not(feature = "no-index"))]
+            idx_ptr_usize,
             query_index,
             #[cfg(not(feature = "no-index"))]
             self.start(),

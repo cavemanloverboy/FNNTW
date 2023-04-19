@@ -4,8 +4,11 @@ use ordered_float::NotNan;
 
 use crate::{
     point::{Float, Point},
-    query_k::{container::Container, container_axis::ContainerAxis},
+    query_k::container::Container,
 };
+
+#[cfg(all(feature = "parallel", feature = "no-position"))]
+use crate::query_k::container_axis::ContainerAxis;
 
 pub fn squared_euclidean<T: Float, const D: usize>(a: &[NotNan<T>; D], b: &[NotNan<T>; D]) -> T
 where
@@ -67,7 +70,7 @@ pub fn new_best<'t, 'i, 'o, T: Float, const D: usize>(
     );
 
     // Run usual squared_euclidean fn
-    let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
+    let dist_sq: T = squared_euclidean(query, candidate.position());
 
     // Compare squared dist
     if dist_sq < *current_best_dist_sq {
@@ -86,7 +89,7 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     't: 'i,
 {
     // Run usual squared_euclidean fn
-    let dist_sq: T = squared_euclidean(query, unsafe { candidate.position() });
+    let dist_sq: T = squared_euclidean(query, candidate.position());
 
     // Compare squared dist
     if dist_sq <= *container.best_dist2() {
@@ -94,6 +97,7 @@ pub(crate) fn new_best_kth<'t, 'i, 'o, T: Float, const D: usize>(
     }
 }
 
+#[cfg(all(feature = "parallel", feature = "no-position"))] // TODO: separate axis from parallel
 pub(crate) fn new_best_kth_axis<'t, 'i, 'o, T: Float, const D: usize>(
     query: &[NotNan<T>; D],
     candidate: &'i Point<T, D>,
@@ -104,7 +108,7 @@ pub(crate) fn new_best_kth_axis<'t, 'i, 'o, T: Float, const D: usize>(
     't: 'i,
 {
     // Run usual squared_euclidean fn
-    let (dist2, ax, nonax) = squared_euclidean_axis(query, unsafe { candidate.position() }, axis);
+    let (dist2, ax, nonax) = squared_euclidean_axis(query, candidate.position(), axis);
 
     // Compare squared dist
     if dist2 <= *container.best_dist2() {

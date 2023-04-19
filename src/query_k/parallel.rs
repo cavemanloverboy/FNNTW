@@ -1,3 +1,5 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
+
 use std::fmt::Debug;
 
 use crate::{
@@ -10,7 +12,6 @@ use ordered_float::NotNan;
 use super::container::Container;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    #[cfg(all(feature = "parallel", feature = "no-position"))]
     pub fn query_nearest_k_parallel<'q>(
         &'q self,
         queries: &'q [[T; D]],
@@ -113,7 +114,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         // Write to given vector
         container.index_into(distances_ptr, indices_ptr, query_index, self.start());
-        // index into clears!!
     }
 
     fn query_nearest_k_periodic_into<'q, 'i>(

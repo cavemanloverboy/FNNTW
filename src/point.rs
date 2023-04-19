@@ -17,14 +17,14 @@ impl<T: Float, const D: usize> Point<T, D> {
 
     /// SAFETY: This is only used for data which has been checked for correct dimensionality
     /// and which lives for 't. It is up to the caller to ensure dereference is valid.
-    pub(crate) unsafe fn position<'t>(&self) -> &[NotNan<T>; D] {
-        &*self.ptr
+    pub(crate) fn position<'t>(&self) -> &[NotNan<T>; D] {
+        unsafe { &*self.ptr }
     }
 
     /// SAFETY: This is only used for data which has been checked for correct dimensionality
     /// and which lives for 't. `start` must be the start of the data vector
-    pub(crate) unsafe fn index<'t>(&self, start: *const [NotNan<T>; D]) -> u64 {
-        self.ptr.offset_from(start) as u64
+    pub(crate) fn index<'t>(&self, start: *const [NotNan<T>; D]) -> u64 {
+        unsafe { self.ptr.offset_from(start) as u64 }
     }
 
     pub fn new<'d>(ptr: &[NotNan<T>; D]) -> Self {

@@ -27,16 +27,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Built tree");
 
     // Query tree, in parallel
-    let (sqdists, indices): (Array2<T>, Array2<u64>) = {
-        let result: (Vec<T>, Vec<u64>) = queries
+    let (sqdists, indices) = {
+        let result: Vec<_> = queries
             .par_iter()
             .map_with(&tree, |t, q| t.query_nearest_k(q, K).unwrap())
             .flatten()
-            .unzip();
+            .collect();
+        let mut dists = vec![];
+        let mut indices = vec![];
+        #[cfg(not(feature = "no-position"))]
+        let mut neighbors = vec![];
+        for r in result {
+            dists.push(r.0);
+            indices.push(r.1);
+            #[cfg(not(feature = "no-position"))]
+            neighbors.push(r.2);
+        }
 
         (
-            Array2::from_shape_vec((NQUERY, K), result.0).unwrap(),
-            Array2::from_shape_vec((NQUERY, K), result.1).unwrap(),
+            Array2::from_shape_vec((NQUERY, K), dists).unwrap(),
+            Array2::from_shape_vec((NQUERY, K), indices).unwrap(),
         )
     };
     println!("Queried");

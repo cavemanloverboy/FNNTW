@@ -1,3 +1,5 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
+
 use fnntw::Tree;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
@@ -18,16 +20,16 @@ fn test_query_nearest_k_parallel() {
         .map(|_| [(); D].map(|_| rand::random()))
         .collect();
 
-    let mut tree = Tree::new(&data, 32).unwrap();
+    let tree = Tree::new(&data, 32).unwrap();
     println!("constructed tree");
 
     // non pbc check
-    let non_par_result: Vec<(Vec<f64>, Vec<u64>)> = query
+    let non_par_result: Vec<_> = query
         .iter()
         .map(|q| tree.query_nearest_k(q, K).unwrap())
         .collect();
     println!("finished par iter query");
-    let par_result: (Vec<f64>, Vec<u64>) = tree.query_nearest_k_parallel(&query, K).unwrap();
+    let par_result = tree.query_nearest_k_parallel(&query, K).unwrap();
     println!("finished native par query");
     for i in 0..QUERY {
         assert_eq!(
@@ -50,11 +52,11 @@ fn test_query_nearest_k_parallel() {
 
     // pbc check
     let tree = tree.with_boxsize(&BOXSIZE).unwrap();
-    let non_par_result: Vec<(Vec<f64>, Vec<u64>)> = query
+    let non_par_result: Vec<_> = query
         .par_iter()
         .map(|q| tree.query_nearest_k(q, K).unwrap())
         .collect();
-    let par_result: (Vec<f64>, Vec<u64>) = tree.query_nearest_k_parallel(&query, K).unwrap();
+    let par_result = tree.query_nearest_k_parallel(&query, K).unwrap();
     for i in 0..QUERY {
         assert_eq!(
             &non_par_result[i].0,

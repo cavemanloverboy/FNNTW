@@ -1,3 +1,5 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
+
 use std::fmt::Debug;
 
 use crate::{
@@ -10,7 +12,6 @@ use ordered_float::NotNan;
 use super::container::Container;
 
 impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
-    #[cfg(all(feature = "parallel", feature = "no-position"))]
     pub fn query_nearest_k_parallel_with<'q>(
         &'q self,
         queries: &'q [[T; D]],
@@ -27,10 +28,6 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
         let dist_ptr_usize = distances.as_mut_ptr() as usize;
         let idx_ptr_usize = indices.as_mut_ptr() as usize;
 
-        // This is my attempt at trying to have something that resembles a thread local
-        // let tx_rx_vec: Vec<_> = (0..rayon::max_num_threads() / 4)
-        //     .map(|_| crossbeam_channel::bounded(4))
-        //     .collect();
         let tx_rx_vec: Vec<_> = (0..rayon::max_num_threads())
             .map(|_| SyncUnsafeCell::new((Container::new(k), Vec::with_capacity(self.height_hint))))
             .collect();
@@ -43,36 +40,25 @@ impl<'t, T: Float + Debug, const D: usize> Tree<'t, T, D> {
 
         if let Some(ref boxsize) = self.boxsize {
             queries.into_par_iter().enumerate().try_for_each(
-                // |(ref mut container, ref mut point_vec),
                 |(query_index, query)| -> FnntwResult<_, T> {
                     // Check for valid query point
                     let query: &[NotNan<T>; D] = check_point_return(query)?;
 
-                    // let (mut container, mut point_vec) =
-                    //     (Container::new(k), Vec::with_capacity(self.height_hint));
-
                     // Get pre-allocated buffers if available
                     let (ref mut container, ref mut point_vec) =
                         unsafe { &mut *tx_rx_vec[rayon::current_thread_index().unwrap()].get() };
-                    // let (mut container, mut point_vec) = rx.try_recv().unwrap_or_else(|_| {
-                    //     (Container::new(k), Vec::with_capacity(self.height_hint))
-                    // });
 
                     // Periodic query
                     self.query_nearest_k_periodic_into_with(
                         query,
                         k,
                         boxsize,
-                        // &mut container,
-                        // &mut point_vec,
                         container,
                         point_vec,
                         dist_ptr_usize,
                         idx_ptr_usize,
                         query_index,
                     );
-
-                    // tx.send((container, point_vec)).unwrap();
 
                     Ok(())
                 },

@@ -2,8 +2,10 @@ use std::fmt::Debug;
 
 use crate::point::Float;
 use ordered_float::NotNan;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 pub type FnntwResult<R, T> = Result<R, FnntwError<T>>;
 // #[cfg(feature = "no-index")]
@@ -28,7 +30,10 @@ pub type QueryKAxisResult<'t, T, const D: usize> = (Vec<T>, Vec<T>, Vec<u64>, Ve
 pub(super) fn check_data<'d, T: Float + Debug, const D: usize>(
     data: &'d [[T; D]],
 ) -> FnntwResult<(), T> {
-    data.into_par_iter().try_for_each(check_point)
+    #[cfg(feature = "parallel")]
+    return data.into_par_iter().try_for_each(check_point);
+    #[cfg(not(feature = "parallel"))]
+    return data.into_iter().try_for_each(check_point);
 }
 
 /// Note: by explicity annotating lifetimes, we are ensuring that transmute does not modify lifetimes
@@ -92,7 +97,6 @@ pub enum FnntwError<T: Float + Debug> {
 }
 
 #[cfg(feature = "sqrt-dist2")]
-
 pub(crate) fn process_result<'t, T: Float, const D: usize>(
     mut result: QueryResult<'t, T, D>,
 ) -> QueryResult<'t, T, D> {
@@ -100,14 +104,21 @@ pub(crate) fn process_result<'t, T: Float, const D: usize>(
     result
 }
 
-#[cfg(feature = "sqrt-dist2")]
+#[cfg(not(feature = "sqrt-dist2"))]
+#[inline(always)]
+pub(crate) fn process_result<'t, T: Float, const D: usize>(
+    result: QueryResult<'t, T, D>,
+) -> QueryResult<'t, T, D> {
+    result
+}
 
+#[cfg(feature = "sqrt-dist2")]
 pub(crate) fn process_dist2<T: Float>(dist2: T) -> T {
     dist2.sqrt()
 }
 
 #[cfg(not(feature = "sqrt-dist2"))]
-
+#[inline(always)]
 pub(crate) fn process_dist2<T: Float>(dist2: T) -> T {
     dist2
 }

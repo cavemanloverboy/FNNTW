@@ -1,6 +1,6 @@
+#![cfg(all(feature = "parallel", feature = "no-position"))]
 use std::collections::BinaryHeap;
 
-#[cfg(feature = "sqrt-dist2")]
 use crate::utils::process_dist2;
 use crate::{
     point::{Float, Point},
@@ -163,7 +163,6 @@ impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
     //     (result, self)
     // }
 
-    // TODO: position
     pub(super) fn index_into<'i>(
         &mut self,
         ax_ptr: usize,
@@ -205,16 +204,17 @@ impl<'t, T: Float, const D: usize> ContainerAxis<'t, T, D> {
                     idx += 1;
                 }
             }
-            #[cfg(not(feature = "no-position"))]
-            {
-                let mut idx = 0;
-                for CandidateAxis((_, neighbor)) in &neighbors {
-                    unsafe {
-                        *ptrs.2.add(idx) = neighbor.position;
-                    }
-                    idx += 1;
-                }
-            }
+            // // TODO if someone requests this
+            // #[cfg(not(feature = "no-position"))]
+            // {
+            //     let mut idx = 0;
+            //     for CandidateAxis((_, neighbor)) in &neighbors {
+            //         unsafe {
+            //             *ptrs.2.add(idx) = neighbor.position;
+            //         }
+            //         idx += 1;
+            //     }
+            // }
         }
     }
 }

@@ -26,8 +26,6 @@ use utils::*;
 
 // mod medians;
 #[cfg(feature = "timing")]
-static INITIAL_VEC_REF: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-#[cfg(feature = "timing")]
 static LEAF_VEC_ALLOC: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 #[cfg(feature = "timing")]
 static LEAF_WRITE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -67,6 +65,9 @@ pub struct Tree<'t, T: Float, const D: usize> {
 
     /// Optional boxsize for periodic queries.
     boxsize: Option<[NotNan<T>; D]>,
+
+    /// Raw references to data points
+    #[allow(unused)]
     data: Vec<Point<T, D>>,
 }
 
