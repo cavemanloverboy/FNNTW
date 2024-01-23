@@ -1,3 +1,5 @@
+This crate has been abandoned in favor of [`bosque`](https://github.com/cavemanloverboy/bosque) — a super fast in-place kD-Tree library.
+
 # FNNTW: Fastest Nearest Neighbor (in the) West
 
 Fastest Neighbor Nearest Neighbor (in the) West is an in-development kD-tree library that aims to be one of the most, if not the most, performant parallel kNN libraries that exist.
